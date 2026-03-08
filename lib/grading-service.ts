@@ -62,9 +62,11 @@ function normalizeText(text: string): string {
 export function isAnswerCorrect(studentAnswer: string, correctAnswer: string): boolean {
   const normStudent = normalizeText(studentAnswer);
   
-  // Split correct answer by common delimiters (/, ,) to support multiple valid answers
-  const possibleAnswers = correctAnswer.split(/[\\/|,]/).map(a => normalizeText(a));
-  
+  // 새 구분자(|||) 우선, 없으면 기존 구분자 사용 (하위호환)
+  const possibleAnswers = correctAnswer.includes('|||')
+    ? correctAnswer.split('|||').map(a => normalizeText(a))
+    : correctAnswer.split(/[\\/|,]/).map(a => normalizeText(a));
+
   return possibleAnswers.some(ans => ans === normStudent && ans !== "");
 }
 
@@ -99,10 +101,11 @@ export async function calculateGradingResult(
       // Collect for AI batch if candidate for semantic check
       const isCandidate = studentAnswerRaw !== "(미작성)" && studentAnswerRaw !== "(판독불가)";
       
-      // 언어 판별: 정답에 한글이 포함되어 있는지 확인
-      const hasKorean = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(answerKeyData.text);
-      
-      // 한글 해석 문제인 경우에만 AI 의미 채도(Semantic Check) 후보로 등록
+      // 언어 판별: 정답 또는 학생 답안에 한글이 포함되어 있는지 확인
+      const koreanRegex = /[ㄱ-ㅎㅏ-ㅣ가-힣]/;
+      const hasKorean = koreanRegex.test(answerKeyData.text) || koreanRegex.test(studentAnswerRaw);
+
+      // 한글이 포함된 경우 AI 의미 채점(Semantic Check) 후보로 등록
       if (isCandidate && hasKorean) {
         failedQuestions.push({ id: qNum, studentAnswer: studentAnswerRaw, correctAnswer: answerKeyData.text });
       }
