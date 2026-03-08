@@ -53,6 +53,8 @@ next-env.d.ts
 .agents/
 .adal/
 .augment/
+.claude/worktrees/
+.claude/settings.local.json
 .cline/
 .codebuddy/
 .codex/
