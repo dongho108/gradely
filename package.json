@@ -2,11 +2,18 @@
   "name": "ai-exam-grader",
   "version": "0.1.0",
   "private": true,
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "npm run electron:compile && concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "next build && npm run electron:compile && electron-builder",
+    "electron:build:win": "next build && npm run electron:compile && electron-builder --win",
+    "electron:build:mac": "next build && npm run electron:compile && electron-builder --mac",
+    "electron:build:linux": "next build && npm run electron:compile && electron-builder --linux"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.93.3",
@@ -26,9 +33,43 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electron": "^35.1.2",
+    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.ai-exam-grader.app",
+    "productName": "AI Grader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "out/**/*"
+    ],
+    "asarUnpack": [
+      "out/**/*"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "public/logo.png"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/logo.png"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "public/logo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
