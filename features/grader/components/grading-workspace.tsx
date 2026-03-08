@@ -40,24 +40,18 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
   const { isAuthenticated, signInWithGoogle } = useAuthStore();
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
-  // Queue system for sequential processing
+  // Queue system for parallel processing (max 5 concurrent)
+  const MAX_CONCURRENT = 5;
   const processingRef = useRef<{
     queue: string[];
-    isProcessing: boolean;
-  }>({ queue: [], isProcessing: false });
+    activeCount: number;
+  }>({ queue: [], activeCount: 0 });
 
   const tabSubmissions = submissions[tabId] || [];
   const [isDragActive, setIsDragActive] = useState(false);
 
-  // Process next item in the queue
-  const processNext = async () => {
-    if (processingRef.current.isProcessing) return;
-    if (processingRef.current.queue.length === 0) {
-      setIsGrading(false);
-      return;
-    }
-
-    // Get the pre-extracted answer key structure for this tab
+  // Process a single submission
+  const processOne = async (submissionId: string) => {
     const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
     const answerKeyStructure = currentTab?.answerKeyStructure;
 
@@ -66,39 +60,45 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
       return;
     }
 
-    processingRef.current.isProcessing = true;
-    setIsGrading(true);
-
-    const submissionId = processingRef.current.queue.shift()!;
     setSubmissionStatus(tabId, submissionId, 'grading');
 
     try {
-      // Get file reference from store
       const submission = useTabStore.getState().submissions[tabId]?.find(s => s.id === submissionId);
       if (!submission) throw new Error('Submission not found');
 
-      // Resolve the file (may need to download from storage)
       let file = submission.fileRef;
       if (!file && submission.storagePath) {
         file = await resolveFile(submission.storagePath, submission.fileName);
       }
       if (!file) throw new Error('No file available for submission');
 
-      // 1. AI Extraction of student answers/name
       const examStructure = await extractExamStructure(file);
-
-      // 2. Local Grading Result calculation
       const result = await calculateGradingResult(submissionId, answerKeyStructure, examStructure);
-
-      // 3. Update store
       updateSubmissionGrade(tabId, submissionId, result);
     } catch (error) {
       console.error('Grading failed:', error);
       setSubmissionStatus(tabId, submissionId, 'pending');
-    } finally {
-      processingRef.current.isProcessing = false;
-      // Process next in queue
-      processNext();
+    }
+  };
+
+  // Drain the queue with up to MAX_CONCURRENT parallel workers
+  const processNext = async () => {
+    while (
+      processingRef.current.queue.length > 0 &&
+      processingRef.current.activeCount < MAX_CONCURRENT
+    ) {
+      const submissionId = processingRef.current.queue.shift()!;
+      processingRef.current.activeCount++;
+      setIsGrading(true);
+
+      processOne(submissionId).finally(() => {
+        processingRef.current.activeCount--;
+        if (processingRef.current.queue.length > 0) {
+          processNext();
+        } else if (processingRef.current.activeCount === 0) {
+          setIsGrading(false);
+        }
+      });
     }
   };
 
