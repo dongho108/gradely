@@ -53,7 +53,6 @@ next-env.d.ts
 .agents/
 .adal/
 .augment/
-.claude/
 .cline/
 .codebuddy/
 .codex/

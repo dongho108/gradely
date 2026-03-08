@@ -17,7 +17,7 @@ interface PDFViewerProps {
 export function PDFViewer({ file, className }: PDFViewerProps) {
   useEffect(() => {
     // Configure PDF worker client-side only
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
     
     // Check if file is an image
     if (file instanceof File) {
