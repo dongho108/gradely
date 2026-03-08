@@ -49,6 +49,7 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
 
   const tabSubmissions = submissions[tabId] || [];
   const [isDragActive, setIsDragActive] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Process a single submission
   const processOne = async (submissionId: string) => {
@@ -195,16 +196,21 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === "dragenter") {
+      dragCounterRef.current++;
       setIsDragActive(true);
     } else if (e.type === "dragleave") {
-      setIsDragActive(false);
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setIsDragActive(false);
+      }
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {

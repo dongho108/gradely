@@ -21,14 +21,19 @@ export function UploadZone({
   const [isDragActive, setIsDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === "dragenter") {
+      dragCounterRef.current++;
       setIsDragActive(true);
     } else if (e.type === "dragleave") {
-      setIsDragActive(false);
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setIsDragActive(false);
+      }
     }
   }, []);
 
@@ -52,6 +57,7 @@ export function UploadZone({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
