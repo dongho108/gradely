@@ -70,6 +70,10 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "protocols": [{
+      "name": "AI Exam Grader",
+      "schemes": ["ai-exam-grader"]
+    }]
   }
 }

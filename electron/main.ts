@@ -1,10 +1,54 @@
-import { app, BrowserWindow, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, shell, protocol, net, ipcMain } from 'electron';
 import path from 'path';
 import url from 'url';
 
 let mainWindow: BrowserWindow | null = null;
 
 const isDev = !app.isPackaged;
+
+// 딥링크 프로토콜 등록 (개발 모드)
+if (isDev) {
+  app.setAsDefaultProtocolClient('ai-exam-grader');
+}
+
+// Windows/Linux: 싱글 인스턴스 잠금 + 딥링크 처리
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    // Windows/Linux에서 딥링크 URL은 argv에 포함됨
+    const deepLinkUrl = argv.find((arg) => arg.startsWith('ai-exam-grader://'));
+    if (deepLinkUrl) {
+      handleDeepLink(deepLinkUrl);
+    }
+    // 메인 윈도우 포커스
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+// macOS: open-url 이벤트로 딥링크 수신
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
+function handleDeepLink(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/auth/callback' || parsed.host === 'auth' ) {
+      const code = parsed.searchParams.get('code');
+      if (code && mainWindow) {
+        mainWindow.webContents.send('auth-callback', code);
+      }
+    }
+  } catch (e) {
+    console.error('[DeepLink] Failed to parse URL:', e);
+  }
+}
 
 // 커스텀 프로토콜 등록 (file:// 대신 app:// 사용)
 protocol.registerSchemesAsPrivileged([
@@ -40,19 +84,8 @@ function createWindow() {
     mainWindow.loadURL('app://./index.html');
   }
 
-  // 외부 링크는 기본 브라우저에서 열기
+  // 외부 링크는 시스템 브라우저에서 열기
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.includes('accounts.google.com') || url.includes('supabase')) {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: 500,
-          height: 700,
-          parent: mainWindow!,
-          modal: false,
-        },
-      };
-    }
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -74,14 +107,25 @@ app.whenReady().then(() => {
     }
 
     const outDir = path.join(__dirname, '..', 'out');
-    const fullPath = path.join(outDir, filePath);
+    let fullPath = path.join(outDir, filePath);
 
     // 보안: out 디렉토리 밖으로 나가지 못하게
     if (!fullPath.startsWith(outDir)) {
       return new Response('Forbidden', { status: 403 });
     }
 
+    // 확장자가 없는 경로는 디렉토리로 간주하여 index.html을 서빙
+    // (예: /auth/callback → /auth/callback/index.html)
+    if (!path.extname(fullPath)) {
+      fullPath = path.join(fullPath, 'index.html');
+    }
+
     return net.fetch(url.pathToFileURL(fullPath).toString());
+  });
+
+  // IPC: renderer에서 시스템 브라우저 열기
+  ipcMain.handle('open-external', (_event, url: string) => {
+    return shell.openExternal(url);
   });
 
   createWindow();
