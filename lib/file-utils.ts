@@ -51,7 +51,7 @@ export async function fileToImages(file: File): Promise<string[]> {
         };
         
         await page.render(renderContext).promise;
-        imageUrls.push(canvas.toDataURL('image/jpeg', 0.8));
+        imageUrls.push(canvas.toDataURL('image/jpeg', 0.92));
       }
     }
 
