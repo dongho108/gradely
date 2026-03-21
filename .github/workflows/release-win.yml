@@ -1,0 +1,40 @@
+name: Release Windows
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Generate date tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="$(date +'%Y-%m-%d')"
+          # 같은 날 여러 빌드 시 suffix 추가
+          COUNT=$(gh release list --limit 100 | grep -c "^${TAG}" || true)
+          if [ "$COUNT" -gt "0" ]; then
+            TAG="${TAG}-${COUNT}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm ci
+      - run: npm run naps2:download
+      - run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          files: release/*.exe
+          draft: false
+          generate_release_notes: true

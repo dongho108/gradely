@@ -2,9 +2,10 @@
 
 import { useTabStore } from "@/store/use-tab-store";
 import { cn } from "@/lib/utils";
-import { Plus, X, LogOut } from "lucide-react";
+import { Plus, X, LogOut, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useRef } from "react";
+import { isElectron } from "@/lib/is-electron";
 import { useAuthStore } from "@/store/use-auth-store";
 import { GoogleLoginButton } from "@/components/auth/google-login-button";
 import { ScannerStatusIndicator } from "@/features/scanner/components/scanner-status-indicator";
@@ -16,6 +17,7 @@ export function Header() {
   const { user, isAuthenticated, signInWithGoogle, signOut } = useAuthStore();
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize with one tab if empty on mount (Client-side only)
@@ -24,6 +26,18 @@ export function Header() {
       addTab();
     }
   }, [tabs.length, addTab]);
+
+  // Fetch latest Windows release download URL
+  useEffect(() => {
+    fetch("https://api.github.com/repos/dongho108/ai-exam-grader/releases/latest")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.assets) return;
+        const exe = data.assets.find((a: { name: string }) => a.name.endsWith(".exe"));
+        if (exe) setDownloadUrl(exe.browser_download_url);
+      })
+      .catch(() => {});
+  }, []);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -153,6 +167,23 @@ export function Header() {
       {/* Right Side Actions */}
       <div className="ml-4 flex items-center gap-3 shrink-0">
         <ScannerStatusIndicator />
+        {downloadUrl && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => {
+              if (isElectron()) {
+                window.electronAPI?.openExternal(downloadUrl);
+              } else {
+                window.open(downloadUrl, "_blank");
+              }
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">다운로드</span>
+          </Button>
+        )}
         {!isAuthenticated ? (
           <GoogleLoginButton 
             onClick={signInWithGoogle} 
