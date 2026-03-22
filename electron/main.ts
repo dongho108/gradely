@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, protocol, net, ipcMain } from 'electron';
 import path from 'path';
 import url from 'url';
+import { exec } from 'child_process';
 import { ScannerService } from './scanner-service';
 
 const scannerService = new ScannerService();
@@ -98,6 +99,30 @@ function createWindow() {
   });
 }
 
+function openInChrome(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (process.platform === 'darwin') {
+      exec(`open -a "Google Chrome" "${url}"`, (err) => {
+        if (err) {
+          shell.openExternal(url).then(resolve).catch(reject);
+        } else {
+          resolve();
+        }
+      });
+    } else if (process.platform === 'win32') {
+      exec(`start chrome "${url}"`, (err) => {
+        if (err) {
+          shell.openExternal(url).then(resolve).catch(reject);
+        } else {
+          resolve();
+        }
+      });
+    } else {
+      shell.openExternal(url).then(resolve).catch(reject);
+    }
+  });
+}
+
 app.whenReady().then(() => {
   // app:// 프로토콜 핸들러: out/ 디렉토리의 정적 파일 서빙
   protocol.handle('app', (request) => {
@@ -128,7 +153,7 @@ app.whenReady().then(() => {
 
   // IPC: renderer에서 시스템 브라우저 열기
   ipcMain.handle('open-external', (_event, url: string) => {
-    return shell.openExternal(url);
+    return openInChrome(url);
   });
 
   // Scanner IPC handlers
