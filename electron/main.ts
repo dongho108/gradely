@@ -94,6 +94,21 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // 숨겨진 DevTools 토글: Shift 5번 연속 입력
+  let shiftCount = 0;
+  let shiftTimer: NodeJS.Timeout | null = null;
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'Shift' && input.type === 'keyDown') {
+      shiftCount++;
+      if (shiftTimer) clearTimeout(shiftTimer);
+      shiftTimer = setTimeout(() => { shiftCount = 0; }, 1500);
+      if (shiftCount >= 5) {
+        shiftCount = 0;
+        mainWindow?.webContents.toggleDevTools();
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
