@@ -59,7 +59,8 @@
     },
     "files": [
       "dist-electron/**/*",
-      "out/**/*"
+      "out/**/*",
+      "!node_modules/**/*"
     ],
     "asarUnpack": [
       "out/**/*"
