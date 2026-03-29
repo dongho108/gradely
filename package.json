@@ -105,7 +105,8 @@
       {
         "provider": "github",
         "owner": "dongho108",
-        "repo": "ai-exam-grader"
+        "repo": "ai-exam-grader",
+        "releaseType": "release"
       }
     ],
     "protocols": [

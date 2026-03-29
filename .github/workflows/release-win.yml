@@ -23,8 +23,9 @@ jobs:
           YEAR=$(date +'%Y')
           MMDD=$(printf '%02d%02d' "$MONTH" "$DAY")
 
-          # 같은 날 여러 빌드 시 suffix 추가
-          COUNT=$(gh release list --limit 100 | grep -c "^${DATE_TAG}" || true)
+          # 같은 날 여러 빌드 시 suffix 추가 (semver에서 leading zero 제거됨)
+          MMDD_NUM=$((MONTH * 100 + DAY))
+          COUNT=$(gh release list --limit 100 | grep -c "${YEAR}\.${MMDD_NUM}\." || true)
           if [ "$COUNT" -gt "0" ]; then
             FILE_TAG="${DATE_TAG}-${COUNT}"
             SEMVER="${YEAR}.${MMDD}.${COUNT}"
