@@ -444,7 +444,7 @@ export class ScannerService {
     }
 
     console.log('[Scanner] launchOnTouchLite:', normalized);
-    const child = execFile(normalized, [], { detached: true, cwd: path.dirname(normalized) });
+    const child = execFile(normalized, [] as string[], { detached: true, cwd: path.dirname(normalized) });
     child.unref();
   }
 
