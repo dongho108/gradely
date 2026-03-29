@@ -49,6 +49,14 @@ export class ScannerService {
   }
 
   /**
+   * NAPS2 데이터 디렉토리 경로를 반환한다.
+   * Program Files 내에서는 쓰기가 불가하므로 userData 디렉토리를 사용한다.
+   */
+  private get naps2DataDir(): string {
+    return path.join(app.getPath('userData'), 'naps2-data');
+  }
+
+  /**
    * NAPS2 Console 실행 파일 경로를 탐색한다.
    * Program Files 내에 있는지 검증하여 보안을 확보한다.
    */
@@ -130,7 +138,7 @@ export class ScannerService {
         return reject(new Error('NAPS2 not found'));
       }
 
-      const args = ['--listdevices', '--driver', 'twain'];
+      const args = ['--listdevices', '--driver', 'twain', '--naps2data', this.naps2DataDir];
       console.log('[Scanner] listDevices: 실행:', naps2Path, args.join(' '));
 
       execFile(naps2Path, args, { timeout: 10000 }, (error, stdout, stderr) => {
@@ -212,6 +220,7 @@ export class ScannerService {
       '--bitdepth', colorMode,
       '--noprofile',
       '--force',
+      '--naps2data', this.naps2DataDir,
     ];
 
     if (options.device) {
