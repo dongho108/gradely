@@ -119,9 +119,9 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
     processNext();
   }, [tabId, tabSubmissions]);
 
-  const handleAnswerEdit = (questionNumber: number, newAnswer: string) => {
+  const handleAnswerEdit = async (questionNumber: number, newAnswer: string) => {
     if (!currentSubmission?.results) return;
-    const updatedResult = recalculateAfterEdit(
+    const updatedResult = await recalculateAfterEdit(
       currentSubmission.id,
       currentSubmission.results,
       questionNumber,

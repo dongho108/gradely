@@ -71,8 +71,8 @@ export function isAnswerCorrect(studentAnswer: string, correctAnswer: string): b
 }
 
 /**
- * Local grading logic: compares student answers using coordinates from the answer key.
- * Uses AI semantic fallback only for Korean answers.
+ * AI 시멘틱 채점: 모든 문항을 AI에게 보내 의미 기반으로 채점한다.
+ * AI 실패 시 로컬 텍스트 매칭으로 graceful fallback.
  */
 export async function calculateGradingResult(
   submissionId: string,
@@ -80,83 +80,83 @@ export async function calculateGradingResult(
   studentExam: StudentExamStructure
 ): Promise<GradingResult> {
   const results: QuestionResult[] = [];
-  const failedQuestions: { id: string; studentAnswer: string; correctAnswer: string }[] = [];
-  let correctCount = 0;
+  const aiQuestions: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] = [];
 
-  // 1. Initial Local Match Pass
+  // 1. 문항 분류: 미작성/판독불가는 즉시 오답, 나머지는 AI 채점 대상
   Object.entries(answerKey.answers).forEach(([qNum, answerKeyData]) => {
     const studentAnswerRaw = studentExam.answers[qNum] || "(미작성)";
-    const isLocalMatch = studentAnswerRaw !== "(미작성)" && studentAnswerRaw !== "(판독불가)" && isAnswerCorrect(studentAnswerRaw, answerKeyData.text);
+    const isUnanswered = studentAnswerRaw === "(미작성)" || studentAnswerRaw === "(판독불가)";
 
-    if (isLocalMatch) {
-      correctCount++;
+    if (isUnanswered) {
       results.push({
         questionNumber: parseInt(qNum),
         studentAnswer: studentAnswerRaw,
         correctAnswer: answerKeyData.text,
-        question: answerKeyData.question, // Pass original question text
-        isCorrect: true,
+        question: answerKeyData.question,
+        isCorrect: false,
       });
     } else {
-      // Collect for AI batch if candidate for semantic check
-      const isCandidate = studentAnswerRaw !== "(미작성)" && studentAnswerRaw !== "(판독불가)";
-      
-      // 언어 판별: 정답 또는 학생 답안에 한글이 포함되어 있는지 확인
-      const koreanRegex = /[ㄱ-ㅎㅏ-ㅣ가-힣]/;
-      const hasKorean = koreanRegex.test(answerKeyData.text) || koreanRegex.test(studentAnswerRaw);
-
-      // 한글이 포함된 경우 AI 의미 채점(Semantic Check) 후보로 등록
-      if (isCandidate && hasKorean) {
-        failedQuestions.push({ id: qNum, studentAnswer: studentAnswerRaw, correctAnswer: answerKeyData.text });
-      }
-      
+      aiQuestions.push({
+        id: qNum,
+        studentAnswer: studentAnswerRaw,
+        correctAnswer: answerKeyData.text,
+        question: answerKeyData.question,
+      });
       results.push({
         questionNumber: parseInt(qNum),
         studentAnswer: studentAnswerRaw,
         correctAnswer: answerKeyData.text,
-        question: answerKeyData.question, // Pass original question text
-        isCorrect: false, // 기본값은 false, AI가 승인하면 나중에 업데이트됨
+        question: answerKeyData.question,
+        isCorrect: false, // AI 결과로 업데이트됨
       });
     }
   });
 
-  // 2. AI Semantic Batch Check (Fallback for Korean answers)
-  if (failedQuestions.length > 0) {
+  // 2. AI 시멘틱 채점 (전체 문항 일괄 전송)
+  let correctCount = 0;
+
+  if (aiQuestions.length > 0) {
+    let aiSuccess = false;
+
     try {
       const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
-        body: { questions: failedQuestions }
+        body: { questions: aiQuestions }
       });
 
-      if (!error && data.success) {
+      if (!error && data?.success) {
         const aiResults: { id: string; isCorrect: boolean; reason: string }[] = data.data;
         aiResults.forEach(aiResult => {
-          if (aiResult.isCorrect) {
-            const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
-            if (questionIdx !== -1) {
-              results[questionIdx].isCorrect = true;
-              correctCount++;
-              console.log(`AI Semantic Match [Q${aiResult.id}]: "${results[questionIdx].studentAnswer}" -> Correct (${aiResult.reason})`);
-            }
+          const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
+          if (questionIdx !== -1) {
+            results[questionIdx].isCorrect = aiResult.isCorrect;
+            results[questionIdx].aiReason = aiResult.reason;
+            if (aiResult.isCorrect) correctCount++;
           }
         });
+        aiSuccess = true;
       }
     } catch (error) {
-      console.warn('Batch semantic grading failed:', error);
+      console.warn('AI semantic grading failed, falling back to local matching:', error);
+    }
+
+    // 3. AI 실패 시 로컬 텍스트 매칭 fallback
+    if (!aiSuccess) {
+      results.forEach(result => {
+        if (result.studentAnswer !== "(미작성)" && result.studentAnswer !== "(판독불가)") {
+          result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer);
+          if (result.isCorrect) correctCount++;
+        }
+      });
     }
   }
 
-  // DERIVE TOTAL COUNT
   const total = Object.keys(answerKey.answers).length;
   const percentage = total > 0 ? (correctCount / total) * 100 : 0;
 
   return {
     submissionId,
     studentName: studentExam.studentName,
-    score: {
-      correct: correctCount,
-      total,
-      percentage,
-    },
+    score: { correct: correctCount, total, percentage },
     results,
   };
 }
@@ -175,22 +175,51 @@ export async function gradeSubmission(
 
 /**
  * Recalculates grading result after manual answer edit.
- * Pure synchronous function - no AI calls, only local text matching.
+ * AI 시멘틱 채점으로 재채점, 실패 시 로컬 매칭 fallback.
  */
-export function recalculateAfterEdit(
+export async function recalculateAfterEdit(
   submissionId: string,
   results: QuestionResult[],
   editedQuestionNumber: number,
   newStudentAnswer: string,
   studentName?: string
-): GradingResult {
+): Promise<GradingResult> {
+  const editedResult = results.find(r => r.questionNumber === editedQuestionNumber);
+  let newIsCorrect = false;
+  let aiReason: string | undefined;
+
+  if (editedResult && newStudentAnswer !== "(미작성)" && newStudentAnswer !== "(판독불가)") {
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
+        body: {
+          questions: [{
+            id: String(editedQuestionNumber),
+            studentAnswer: newStudentAnswer,
+            correctAnswer: editedResult.correctAnswer,
+            question: editedResult.question,
+          }]
+        }
+      });
+
+      if (!error && data?.success && data.data?.[0]) {
+        newIsCorrect = data.data[0].isCorrect;
+        aiReason = data.data[0].reason;
+      } else {
+        newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+      }
+    } catch {
+      newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+    }
+  }
+
   const updatedResults = results.map((result) => {
     if (result.questionNumber !== editedQuestionNumber) return result;
     return {
       ...result,
       studentAnswer: newStudentAnswer,
-      isCorrect: isAnswerCorrect(newStudentAnswer, result.correctAnswer),
+      isCorrect: newIsCorrect,
       isEdited: true,
+      aiReason,
     };
   });
 

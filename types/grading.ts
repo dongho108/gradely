@@ -28,6 +28,7 @@ export interface QuestionResult {
   isCorrect: boolean;
   question?: string;            // Original question text
   isEdited?: boolean;           // Track manual edits by teacher
+  aiReason?: string;            // AI 채점 판단 이유
 }
 
 export interface GradingResult {
