@@ -1,6 +1,11 @@
 name: Release Windows
 on:
   workflow_dispatch:
+    inputs:
+      no-cache:
+        description: '캐시 없이 빌드'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -23,12 +28,14 @@ jobs:
           cache: npm
 
       - name: Cache NAPS2
+        if: ${{ inputs.no-cache != true }}
         uses: actions/cache@v4
         with:
           path: resources/naps2
           key: naps2-${{ hashFiles('scripts/download-naps2.mjs') }}
 
       - name: Cache Electron binary
+        if: ${{ inputs.no-cache != true }}
         uses: actions/cache@v4
         with:
           path: ~/AppData/Local/electron/Cache
@@ -37,6 +44,7 @@ jobs:
             electron-bin-${{ runner.os }}-
 
       - name: Cache electron-builder
+        if: ${{ inputs.no-cache != true }}
         uses: actions/cache@v4
         with:
           path: ~/AppData/Local/electron-builder/Cache
@@ -45,6 +53,7 @@ jobs:
             electron-builder-${{ runner.os }}-
 
       - name: Cache Next.js build
+        if: ${{ inputs.no-cache != true }}
         uses: actions/cache@v4
         with:
           path: .next/cache
@@ -108,3 +117,4 @@ jobs:
         run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_PUBLIC_APP_VERSION: ${{ steps.tag.outputs.tag }}
