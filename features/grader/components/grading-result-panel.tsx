@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StudentSubmission, QuestionResult } from "@/types/grading";
-import { Check, X, ClipboardList, Pencil } from "lucide-react";
+import { Check, X, ClipboardList, Pencil, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DiffHighlight } from "./diff-highlight";
 
@@ -12,9 +12,10 @@ interface GradingResultPanelProps {
   onAnswerEdit?: (questionNumber: number, newAnswer: string) => void;
   onCorrectToggle?: (questionNumber: number, isCorrect: boolean) => void;
   onStudentNameEdit?: (newName: string) => void;
+  onReportIssue?: () => void;
 }
 
-export function GradingResultPanel({ submission, className, onAnswerEdit, onCorrectToggle, onStudentNameEdit }: GradingResultPanelProps) {
+export function GradingResultPanel({ submission, className, onAnswerEdit, onCorrectToggle, onStudentNameEdit, onReportIssue }: GradingResultPanelProps) {
   const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -161,6 +162,20 @@ export function GradingResultPanel({ submission, className, onAnswerEdit, onCorr
             style={{ width: `${score.percentage}%` }}
           />
         </div>
+
+        {/* 제보 버튼 */}
+        {onReportIssue && (
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={onReportIssue}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-amber-600 transition-colors"
+              title="채점 오류 제보"
+            >
+              <Flag className="w-3 h-3" />
+              오류 제보
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 문제별 결과 테이블 */}

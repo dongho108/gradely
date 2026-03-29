@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useTabStore } from "@/store/use-tab-store";
 import { useAuthStore } from "@/store/use-auth-store";
 import { LoginPromptModal } from "@/components/auth/login-prompt-modal";
+import { ReportIssueModal } from "./report-issue-modal";
 // import { PDFViewer } from "./pdf-viewer"; // Can't import directly due to DOMMatrix error
 import { SubmissionList } from "./submission-list";
 import { GradingResultPanel } from "./grading-result-panel";
@@ -39,6 +40,7 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isAuthenticated, signInWithGoogle } = useAuthStore();
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Queue system for parallel processing (max 5 concurrent)
   const MAX_CONCURRENT = 5;
@@ -370,11 +372,22 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
             {/* Content Area - 탭에 따라 전환 */}
             {currentSubmission && viewMode === 'result' ? (
               <div className="flex-1 rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
-                <GradingResultPanel 
-                  submission={currentSubmission} 
+                <GradingResultPanel
+                  submission={currentSubmission}
                   onAnswerEdit={handleAnswerEdit}
                   onCorrectToggle={handleCorrectToggle}
                   onStudentNameEdit={handleStudentNameEdit}
+                  onReportIssue={
+                    currentSubmission.status === 'graded' && currentSubmission.results
+                      ? () => {
+                          if (!isAuthenticated) {
+                            setShowLoginPrompt(true);
+                            return;
+                          }
+                          setShowReportModal(true);
+                        }
+                      : undefined
+                  }
                 />
               </div>
             ) : (
@@ -395,6 +408,23 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
           }}
         />
       )}
+
+      {showReportModal && currentSubmission && user && (() => {
+        const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
+        const answerKeyStructure = currentTab?.answerKeyStructure;
+        const answerKeyStoragePath = currentTab?.answerKeyFile?.storagePath;
+        if (!answerKeyStructure || !answerKeyStoragePath) return null;
+        return (
+          <ReportIssueModal
+            submission={currentSubmission}
+            sessionId={tabId}
+            userId={user.id}
+            answerKeyStructure={answerKeyStructure}
+            answerKeyStoragePath={answerKeyStoragePath}
+            onClose={() => setShowReportModal(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
