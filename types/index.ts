@@ -27,6 +27,7 @@ export interface ScanOptions {
   colorMode?: 'color' | 'gray' | 'bw';
   format?: 'pdf' | 'jpeg' | 'png';
   source?: 'glass' | 'feeder' | 'duplex';
+  driver?: 'twain' | 'wia';
 }
 
 export interface ScanResult {
@@ -41,8 +42,13 @@ export interface ScannerDevice {
 
 export interface ScannerAvailability {
   available: boolean;
-  reason?: 'windows-only' | 'naps2-not-found' | 'no-device-found';
+  reason?: 'windows-only' | 'naps2-not-found' | 'no-device-found' | 'permission-denied';
   path?: string;
+}
+
+export interface ListDevicesResult {
+  devices: ScannerDevice[];
+  error?: { type: 'permission' | 'timeout' | 'unknown'; message: string };
 }
 
 // --- Scanner Batch Workflow Types ---

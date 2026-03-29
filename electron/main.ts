@@ -196,14 +196,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('scanner:list-devices', async () => {
     console.log('[Scanner IPC] list-devices 호출');
-    try {
-      const devices = await scannerService.listDevices();
-      console.log('[Scanner IPC] list-devices 결과:', JSON.stringify(devices));
-      return devices;
-    } catch (err) {
-      console.error('[Scanner IPC] list-devices 에러:', (err as Error).message);
-      throw err;
-    }
+    const result = await scannerService.listDevices();
+    console.log('[Scanner IPC] list-devices 결과:', JSON.stringify(result));
+    return result;
   });
 
   ipcMain.handle('scanner:scan', async (_event, options) => {

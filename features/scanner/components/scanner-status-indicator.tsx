@@ -26,15 +26,18 @@ export function ScannerStatusIndicator() {
 
   // NAPS2 있지만 물리 스캐너 없음
   const isNoDevice = reason === 'no-device-found'
+  const isPermissionDenied = reason === 'permission-denied'
 
-  const dotColor = available ? 'bg-green-500' : 'bg-red-500'
-  const textColor = available ? 'text-green-700' : 'text-red-600'
+  const dotColor = available ? 'bg-green-500' : isPermissionDenied ? 'bg-yellow-500' : 'bg-red-500'
+  const textColor = available ? 'text-green-700' : isPermissionDenied ? 'text-yellow-700' : 'text-red-600'
 
   const label = available && deviceName
     ? deviceName
-    : isNoDevice
-      ? '스캐너 없음'
-      : '스캐너 미연결'
+    : isPermissionDenied
+      ? '스캐너 권한 필요'
+      : isNoDevice
+        ? '스캐너 없음'
+        : '스캐너 미연결'
 
   return (
     <div className="flex items-center">

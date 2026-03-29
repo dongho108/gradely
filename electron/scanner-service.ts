@@ -21,6 +21,7 @@ interface ScanOptions {
   colorMode?: typeof VALID_COLOR_MODES[number];
   format?: typeof VALID_FORMATS[number];
   source?: typeof VALID_SOURCES[number];
+  driver?: 'twain' | 'wia';
 }
 
 interface ScanResult {
@@ -35,14 +36,20 @@ interface ScannerDevice {
 
 interface ScannerAvailability {
   available: boolean;
-  reason?: 'windows-only' | 'naps2-not-found';
+  reason?: 'windows-only' | 'naps2-not-found' | 'permission-denied';
   path?: string;
+}
+
+interface ListDevicesResult {
+  devices: ScannerDevice[];
+  error?: { type: 'permission' | 'timeout' | 'unknown'; message: string };
 }
 
 export class ScannerService {
   private cachedNaps2Path: string | null = null;
   private isScanning = false;
   private currentProcess: ChildProcess | null = null;
+  private lastSuccessfulDriver: 'twain' | 'wia' | null = null;
 
   private get tempDir(): string {
     return path.join(app.getPath('temp'), 'ai-exam-grader-scan');
@@ -136,41 +143,101 @@ export class ScannerService {
   }
 
   /**
-   * 연결된 스캐너 목록을 반환한다.
+   * 특정 드라이버로 스캐너 목록을 조회한다.
    */
-  listDevices(): Promise<ScannerDevice[]> {
-    return new Promise((resolve, reject) => {
+  private listDevicesByDriver(driver: 'twain' | 'wia', timeout = 5000): Promise<ListDevicesResult> {
+    return new Promise((resolve) => {
       const naps2Path = this.findNaps2Path();
       if (!naps2Path) {
-        console.error('[Scanner] listDevices: NAPS2 경로 없음');
-        return reject(new Error('NAPS2 not found'));
+        console.error('[Scanner] listDevicesByDriver: NAPS2 경로 없음');
+        return resolve({ devices: [], error: { type: 'unknown', message: 'NAPS2 not found' } });
       }
 
-      const args = ['--listdevices', '--driver', 'twain'];
-      console.log('[Scanner] listDevices: 실행:', naps2Path, args.join(' '));
-      console.log('[Scanner] listDevices: NAPS2_DATA =', this.naps2DataDir);
+      const args = ['--listdevices', '--driver', driver];
+      console.log('[Scanner] listDevicesByDriver:', driver, '실행:', naps2Path, args.join(' '));
+      console.log('[Scanner] listDevicesByDriver: NAPS2_DATA =', this.naps2DataDir);
 
-      execFile(naps2Path, args, { timeout: 10000, env: this.naps2Env }, (error, stdout, stderr) => {
-        if (error) {
-          console.error('[Scanner] listDevices: 에러:', error.message);
-          console.error('[Scanner] listDevices: stderr:', stderr);
-          console.error('[Scanner] listDevices: killed:', error.killed);
-          return reject(new Error(`Failed to list devices: ${stderr || error.message}`));
+      execFile(naps2Path, args, { timeout, env: this.naps2Env }, (error, stdout, stderr) => {
+        // 권한 에러 감지 (terminal — fallback 안 함)
+        const errorText = stderr || error?.message || '';
+        if (/UnauthorizedAccessException|Access.*denied/i.test(errorText)) {
+          console.error('[Scanner] listDevicesByDriver:', driver, '권한 에러:', errorText);
+          return resolve({
+            devices: [],
+            error: {
+              type: 'permission',
+              message: '스캐너 접근 권한이 없습니다. 앱을 재설치하거나 관리자 권한으로 실행해 주세요.',
+            },
+          });
         }
 
-        console.log('[Scanner] listDevices: stdout 원문:', JSON.stringify(stdout));
-        console.log('[Scanner] listDevices: stderr:', JSON.stringify(stderr));
+        if (error) {
+          console.error('[Scanner] listDevicesByDriver:', driver, '에러:', error.message);
+          if (error.killed) {
+            return resolve({ devices: [], error: { type: 'timeout', message: `Device listing timed out (${driver})` } });
+          }
+          return resolve({ devices: [], error: { type: 'unknown', message: stderr || error.message } });
+        }
+
+        console.log('[Scanner] listDevicesByDriver:', driver, 'stdout:', JSON.stringify(stdout));
 
         const devices: ScannerDevice[] = stdout
           .split('\n')
           .map((line) => line.trim())
           .filter((line) => line.length > 0)
-          .map((name) => ({ name, driver: 'twain' as const }));
+          .map((name) => ({ name, driver }));
 
-        console.log('[Scanner] listDevices: 파싱된 디바이스 목록:', JSON.stringify(devices));
-        resolve(devices);
+        console.log('[Scanner] listDevicesByDriver:', driver, '디바이스:', JSON.stringify(devices));
+        resolve({ devices });
       });
     });
+  }
+
+  /**
+   * 연결된 스캐너 목록을 반환한다.
+   * TWAIN → WIA 순차 fallback, 마지막 성공 드라이버 캐싱.
+   */
+  async listDevices(): Promise<ListDevicesResult> {
+    const naps2Path = this.findNaps2Path();
+    if (!naps2Path) {
+      console.error('[Scanner] listDevices: NAPS2 경로 없음');
+      return { devices: [], error: { type: 'unknown', message: 'NAPS2 not found' } };
+    }
+
+    const primaryDriver = this.lastSuccessfulDriver ?? 'twain';
+    const secondaryDriver: 'twain' | 'wia' = primaryDriver === 'twain' ? 'wia' : 'twain';
+
+    console.log('[Scanner] listDevices: primary =', primaryDriver, ', secondary =', secondaryDriver);
+
+    // Primary driver 시도
+    const primaryResult = await this.listDevicesByDriver(primaryDriver);
+
+    // 권한 에러는 terminal — fallback 하지 않음
+    if (primaryResult.error?.type === 'permission') {
+      return primaryResult;
+    }
+
+    // 디바이스 발견 시 캐싱 후 반환
+    if (primaryResult.devices.length > 0) {
+      this.lastSuccessfulDriver = primaryDriver;
+      return primaryResult;
+    }
+
+    // Secondary driver로 fallback
+    console.log('[Scanner] listDevices:', primaryDriver, '결과 없음 →', secondaryDriver, 'fallback');
+    const secondaryResult = await this.listDevicesByDriver(secondaryDriver);
+
+    if (secondaryResult.error?.type === 'permission') {
+      return secondaryResult;
+    }
+
+    if (secondaryResult.devices.length > 0) {
+      this.lastSuccessfulDriver = secondaryDriver;
+      return secondaryResult;
+    }
+
+    // 둘 다 빈 결과
+    return { devices: [] };
   }
 
   /**
@@ -221,9 +288,10 @@ export class ScannerService {
     const tempPath = path.join(this.tempDir, fileName);
 
     // CLI 인자 구성
+    const driver = options.driver ?? 'twain';
     const args = [
       '-o', tempPath,
-      '--driver', 'twain',
+      '--driver', driver,
       '--dpi', String(dpi),
       '--source', source,
       '--bitdepth', colorMode,
@@ -255,11 +323,19 @@ export class ScannerService {
               console.error('[Scanner] scan: 에러:', error.message);
               console.error('[Scanner] scan: killed:', error.killed);
               console.error('[Scanner] scan: code:', (error as NodeJS.ErrnoException).code);
+
+              const errorText = stderr || error.message;
+
+              // 권한 에러 감지
+              if (/UnauthorizedAccessException|Access.*denied/i.test(errorText)) {
+                return reject(new Error('스캐너 접근 권한이 없습니다. 앱을 재설치하거나 관리자 권한으로 실행해 주세요.'));
+              }
+
               // 타임아웃으로 종료된 경우
               if (error.killed) {
                 return reject(new Error('Scan timed out'));
               }
-              return reject(new Error(`Scan failed: ${stderr || error.message}`));
+              return reject(new Error(`Scan failed: ${errorText}`));
             }
 
             // 출력 파일 존재 확인

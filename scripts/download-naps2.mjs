@@ -169,6 +169,15 @@ async function main() {
     process.exit(1);
   }
 
+  // Remove Data/ directory to force NAPS2_DATA env var usage
+  // NAPS2 Portable checks {exe_dir}/../Data/ before NAPS2_DATA env var.
+  // In Program Files this causes UnauthorizedAccessException.
+  const dataDir = path.join(DEST_DIR, 'Data');
+  if (fs.existsSync(dataDir)) {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    console.log('  Removed Data/ directory to force NAPS2_DATA env var usage');
+  }
+
   // Write version marker
   fs.writeFileSync(VERSION_FILE, NAPS2_VERSION, 'utf8');
   console.log(`\nNAPS2 v${NAPS2_VERSION} installed to ${DEST_DIR}`);

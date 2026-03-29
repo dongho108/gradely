@@ -30,9 +30,19 @@ export function useScannerAvailability(): UseScannerAvailabilityReturn {
     setIsRefreshing(true)
     try {
       console.log('[Scanner UI] fetchDevices: IPC 호출 시작')
-      const list = await window.electronAPI!.scanner.listDevices()
-      console.log('[Scanner UI] fetchDevices: IPC 결과:', JSON.stringify(list))
-      const mapped: ScannerDevice[] = list.map(d => ({
+      const result = await window.electronAPI!.scanner.listDevices()
+      console.log('[Scanner UI] fetchDevices: IPC 결과:', JSON.stringify(result))
+
+      // 권한 에러 처리
+      if (result.error?.type === 'permission') {
+        console.warn('[Scanner UI] fetchDevices: 권한 에러:', result.error.message)
+        setAvailable(false)
+        setReason('permission-denied')
+        setDevices([])
+        return
+      }
+
+      const mapped: ScannerDevice[] = (result.devices ?? []).map(d => ({
         name: d.name,
         driver: d.driver as ScannerDevice['driver'],
       }))

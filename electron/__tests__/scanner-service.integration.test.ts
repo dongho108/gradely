@@ -52,20 +52,106 @@ describe('ScannerService - 통합 테스트', () => {
       expect(availability.available).toBe(true);
 
       // Step 2: 디바이스 목록 가져오기
-      const devices = await service.listDevices();
-      expect(devices).toHaveLength(1);
-      expect(devices[0].name).toBe('Canon DR-C225');
-      expect(devices[0].driver).toBe('twain');
+      const result = await service.listDevices();
+      expect(result.devices).toHaveLength(1);
+      expect(result.devices[0].name).toBe('Canon DR-C225');
+      expect(result.devices[0].driver).toBe('twain');
+      expect(result.error).toBeUndefined();
     });
 
-    it('NAPS2 미존재 시 available: false이고 listDevices도 실패한다', async () => {
+    it('NAPS2 미존재 시 available: false이고 listDevices도 에러 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => { throw new Error('ENOENT'); });
 
       const availability = service.isAvailable();
       expect(availability.available).toBe(false);
       expect(availability.reason).toBe('naps2-not-found');
 
-      await expect(service.listDevices()).rejects.toThrow('NAPS2 not found');
+      const result = await service.listDevices();
+      expect(result.devices).toEqual([]);
+      expect(result.error?.type).toBe('unknown');
+    });
+  });
+
+  describe('TWAIN → WIA fallback 플로우', () => {
+    it('TWAIN 빈 결과 → WIA fallback → 디바이스 발견', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(null, '', '');
+        } else if (args.includes('wia')) {
+          (callback as Function)(null, 'Canon WIA Scanner\n', '');
+        }
+        return {} as any;
+      });
+
+      const availability = service.isAvailable();
+      expect(availability.available).toBe(true);
+
+      const result = await service.listDevices();
+      expect(result.devices).toHaveLength(1);
+      expect(result.devices[0].name).toBe('Canon WIA Scanner');
+      expect(result.devices[0].driver).toBe('wia');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('권한 에러 → WIA fallback 없이 즉시 에러 반환', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(
+          new Error('exec failed'),
+          '',
+          'System.UnauthorizedAccessException: Access to the path is denied.'
+        );
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+      expect(result.devices).toEqual([]);
+      expect(result.error?.type).toBe('permission');
+      expect(result.error?.message).toContain('권한');
+      // fallback 없으므로 1번만 호출
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('드라이버 캐싱: WIA 성공 후 다음 호출 시 WIA 먼저 시도', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+
+      // 1차: TWAIN 빈 → WIA 성공
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(null, '', '');
+        } else {
+          (callback as Function)(null, 'WIA Scanner\n', '');
+        }
+        return {} as any;
+      });
+      const first = await service.listDevices();
+      expect(first.devices[0].driver).toBe('wia');
+
+      // 2차: WIA를 먼저 시도하고 성공
+      mockExecFile.mockClear();
+      const callOrder: string[] = [];
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        const driver = args[args.indexOf('--driver') + 1];
+        callOrder.push(driver);
+        if (driver === 'wia') {
+          (callback as Function)(null, 'WIA Scanner\n', '');
+        } else {
+          (callback as Function)(null, '', '');
+        }
+        return {} as any;
+      });
+      const second = await service.listDevices();
+
+      expect(callOrder[0]).toBe('wia');
+      expect(second.devices[0].driver).toBe('wia');
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -100,6 +186,25 @@ describe('ScannerService - 통합 테스트', () => {
       // Step 3: 파일 정리
       service.cleanupScanFile(scanResult.filePath);
       expect(unlinkSpy).toHaveBeenCalledWith(path.normalize(scanResult.filePath));
+    });
+
+    it('WIA 드라이버로 스캔이 정상 실행된다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'statSync').mockReturnValue({ size: 100 } as any);
+
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(null, '', '');
+        return {} as any;
+      });
+
+      const result = await service.scan({ driver: 'wia', format: 'jpeg' });
+      expect(result.mimeType).toBe('image/jpeg');
+
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args[args.indexOf('--driver') + 1]).toBe('wia');
     });
   });
 
@@ -183,7 +288,7 @@ describe('ScannerService - 통합 테스트', () => {
       await expect(service.scan({ format: 'jpeg' })).rejects.toThrow('Scan timed out');
     });
 
-    it('NAPS2 stderr 에러 시 에러 메시지를 포함한다', async () => {
+    it('NAPS2 stderr 권한 에러 시 사용자 안내 메시지를 포함한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
@@ -194,7 +299,7 @@ describe('ScannerService - 통합 테스트', () => {
         return {} as any;
       });
 
-      await expect(service.scan({ format: 'jpeg' })).rejects.toThrow('Scan failed: UnauthorizedAccessException: Access denied');
+      await expect(service.scan({ format: 'jpeg' })).rejects.toThrow('스캐너 접근 권한이 없습니다');
     });
 
     it('출력 파일이 생성되지 않으면 에러를 반환한다', async () => {

@@ -109,13 +109,17 @@ describe('ScannerService - 단위 테스트', () => {
   });
 
   describe('listDevices()', () => {
-    it('NAPS2 경로가 없으면 에러를 throw한다', async () => {
+    it('NAPS2 경로가 없으면 에러 객체를 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => { throw new Error('ENOENT'); });
 
-      await expect(service.listDevices()).rejects.toThrow('NAPS2 not found');
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([]);
+      expect(result.error?.type).toBe('unknown');
+      expect(result.error?.message).toContain('NAPS2 not found');
     });
 
-    it('NAPS2 stdout을 파싱하여 디바이스 목록을 반환한다', async () => {
+    it('TWAIN에서 디바이스가 있으면 WIA를 시도하지 않고 결과를 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
@@ -123,26 +127,59 @@ describe('ScannerService - 단위 테스트', () => {
         return {} as any;
       });
 
-      const devices = await service.listDevices();
+      const result = await service.listDevices();
 
-      expect(devices).toEqual([
+      expect(result.devices).toEqual([
         { name: 'Canon DR-C225', driver: 'twain' },
         { name: 'Epson ES-50', driver: 'twain' },
       ]);
+      expect(result.error).toBeUndefined();
+      // execFile은 1번만 호출 (TWAIN만)
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
-    it('NAPS2 실행 에러 시 에러를 전파한다', async () => {
+    it('TWAIN에서 빈 배열이면 WIA로 재시도한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
+      let callCount = 0;
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
-        (callback as Function)(new Error('exec failed'), '', 'TWAIN error');
+        callCount++;
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(null, '\n', '');
+        } else {
+          (callback as Function)(null, 'WIA Scanner Device\n', '');
+        }
         return {} as any;
       });
 
-      await expect(service.listDevices()).rejects.toThrow('Failed to list devices: TWAIN error');
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([
+        { name: 'WIA Scanner Device', driver: 'wia' },
+      ]);
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
-    it('빈 stdout이면 빈 배열을 반환한다', async () => {
+    it('WIA 결과의 driver 속성이 wia이다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(null, '', '');
+        } else {
+          (callback as Function)(null, 'My WIA Scanner\n', '');
+        }
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices[0].driver).toBe('wia');
+    });
+
+    it('TWAIN과 WIA 모두 빈 배열이면 { devices: [] }를 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
@@ -150,8 +187,103 @@ describe('ScannerService - 단위 테스트', () => {
         return {} as any;
       });
 
-      const devices = await service.listDevices();
-      expect(devices).toEqual([]);
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([]);
+      expect(result.error).toBeUndefined();
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('권한 에러(UnauthorizedAccessException) 시 WIA로 fallback하지 않고 즉시 에러를 반환한다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(
+          new Error('exec failed'),
+          '',
+          'UnauthorizedAccessException: Access to the path is denied.'
+        );
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([]);
+      expect(result.error?.type).toBe('permission');
+      expect(result.error?.message).toContain('권한');
+      // 권한 에러는 terminal — execFile 1번만 호출
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('마지막 성공 드라이버를 캐싱하여 다음 호출 시 먼저 시도한다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+
+      // 첫 번째 호출: TWAIN 빈 → WIA 성공
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(null, '', '');
+        } else {
+          (callback as Function)(null, 'WIA Device\n', '');
+        }
+        return {} as any;
+      });
+      await service.listDevices();
+
+      // 두 번째 호출: WIA를 먼저 시도해야 함
+      mockExecFile.mockClear();
+      const callOrder: string[] = [];
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        const driver = args[args.indexOf('--driver') + 1];
+        callOrder.push(driver);
+        if (driver === 'wia') {
+          (callback as Function)(null, 'WIA Device\n', '');
+        } else {
+          (callback as Function)(null, '', '');
+        }
+        return {} as any;
+      });
+      await service.listDevices();
+
+      expect(callOrder[0]).toBe('wia'); // WIA 먼저 시도
+      expect(mockExecFile).toHaveBeenCalledTimes(1); // WIA 성공이므로 1번만
+    });
+
+    it('TWAIN 에러(non-permission) 시 WIA로 fallback한다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const args = _args as string[];
+        if (args.includes('twain')) {
+          (callback as Function)(new Error('TWAIN driver error'), '', 'TWAIN init failed');
+        } else {
+          (callback as Function)(null, 'Fallback WIA Scanner\n', '');
+        }
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([
+        { name: 'Fallback WIA Scanner', driver: 'wia' },
+      ]);
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('타임아웃은 5초로 설정된다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(null, 'Device\n', '');
+        return {} as any;
+      });
+
+      await service.listDevices();
+
+      const opts = mockExecFile.mock.calls[0][2] as Record<string, unknown>;
+      expect(opts.timeout).toBe(5000);
     });
 
     it('NAPS2_DATA 환경변수가 설정되어야 한다', async () => {
@@ -164,7 +296,6 @@ describe('ScannerService - 단위 테스트', () => {
 
       await service.listDevices();
 
-      const callArgs = mockExecFile.mock.calls[0][1] as string[];
       const envOpt = mockExecFile.mock.calls[0][2] as Record<string, unknown>;
       expect((envOpt.env as Record<string, string>).NAPS2_DATA).toBe(path.join('/tmp/test-userdata', 'naps2-data'));
     });
@@ -223,7 +354,6 @@ describe('ScannerService - 단위 테스트', () => {
 
       await service.scan({ format: 'jpeg' });
 
-      const callArgs = mockExecFile.mock.calls[0][1] as string[];
       const envOpt = mockExecFile.mock.calls[0][2] as Record<string, unknown>;
       expect((envOpt.env as Record<string, string>).NAPS2_DATA).toBe(path.join('/tmp/test-userdata', 'naps2-data'));
     });
@@ -244,6 +374,54 @@ describe('ScannerService - 단위 테스트', () => {
       const callArgs = mockExecFile.mock.calls[0][1] as string[];
       expect(callArgs).toContain('--device');
       expect(callArgs).toContain('Canon DR-C225');
+    });
+
+    it('driver: wia이면 --driver wia 인자가 전달된다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'statSync').mockReturnValue({ size: 1024 } as any);
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(null, '', '');
+        return {} as any;
+      });
+
+      await service.scan({ driver: 'wia', format: 'jpeg' });
+
+      const callArgs = mockExecFile.mock.calls[0][1] as string[];
+      expect(callArgs[callArgs.indexOf('--driver') + 1]).toBe('wia');
+    });
+
+    it('driver 미지정이면 기본 twain을 사용한다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'statSync').mockReturnValue({ size: 1024 } as any);
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(null, '', '');
+        return {} as any;
+      });
+
+      await service.scan({ format: 'jpeg' });
+
+      const callArgs = mockExecFile.mock.calls[0][1] as string[];
+      expect(callArgs[callArgs.indexOf('--driver') + 1]).toBe('twain');
+    });
+
+    it('scan() 중 권한 에러 시 사용자 안내 메시지를 포함한다', async () => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        (callback as Function)(new Error('scan error'), '', 'UnauthorizedAccessException: Access denied');
+        return {} as any;
+      });
+
+      await expect(service.scan({ format: 'jpeg' })).rejects.toThrow('스캐너 접근 권한이 없습니다');
     });
   });
 
