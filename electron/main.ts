@@ -5,6 +5,7 @@ import url from 'url';
 import { exec } from 'child_process';
 import { ScannerService } from './scanner-service';
 import { createAuthCallbackServer } from './auth-server';
+import { checkForUIUpdate, getOutDir } from './hot-update';
 
 const scannerService = new ScannerService();
 
@@ -140,7 +141,12 @@ function openInChrome(url: string): Promise<void> {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Hot update: UI 번들 업데이트 체크 (프로덕션 전용)
+  if (!isDev) {
+    await checkForUIUpdate();
+  }
+
   // app:// 프로토콜 핸들러: out/ 디렉토리의 정적 파일 서빙
   protocol.handle('app', (request) => {
     const requestUrl = new URL(request.url);
@@ -151,7 +157,7 @@ app.whenReady().then(() => {
       filePath = '/index.html';
     }
 
-    const outDir = path.join(__dirname, '..', 'out');
+    const outDir = isDev ? path.join(__dirname, '..', 'out') : getOutDir();
     let fullPath = path.join(outDir, filePath);
 
     // 보안: out 디렉토리 밖으로 나가지 못하게

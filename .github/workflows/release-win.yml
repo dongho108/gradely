@@ -1,7 +1,14 @@
 name: Release Windows
 on:
+  workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - 'electron/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/**'
+      - 'resources/**'
 permissions:
   contents: write
 jobs:

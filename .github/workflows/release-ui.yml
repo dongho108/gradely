@@ -1,0 +1,50 @@
+name: Release UI Bundle
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'features/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'store/**'
+      - 'public/**'
+      - 'types/**'
+      - 'next.config.ts'
+      - 'postcss.config.mjs'
+      - 'tailwind.config.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx next build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      - name: Package UI bundle
+        run: |
+          cd out && zip -r ../out.zip . && cd ..
+          SHA=$(sha256sum out.zip | cut -d' ' -f1)
+          SIZE=$(stat -c%s out.zip)
+          echo "{\"version\":\"${SHA}\",\"url\":\"https://github.com/dongho108/ai-exam-grader/releases/download/ui-latest/out.zip\",\"size\":${SIZE}}" > ui-manifest.json
+      - name: Upload to GitHub Release
+        run: |
+          gh release delete ui-latest --yes 2>/dev/null || true
+          gh release create ui-latest out.zip ui-manifest.json \
+            --title "UI Bundle (latest)" \
+            --notes "Auto-generated UI bundle for hot update" \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
