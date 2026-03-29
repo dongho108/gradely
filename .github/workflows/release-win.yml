@@ -9,6 +9,7 @@ on:
       - 'package-lock.json'
       - 'scripts/**'
       - 'resources/**'
+      - 'tsconfig.json'
 permissions:
   contents: write
 jobs:

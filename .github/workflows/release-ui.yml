@@ -15,6 +15,7 @@ on:
       - 'next.config.ts'
       - 'postcss.config.mjs'
       - 'tailwind.config.*'
+      - 'tsconfig.json'
 
 permissions:
   contents: write
