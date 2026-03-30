@@ -75,7 +75,7 @@ describe('ScannerService - 단위 테스트', () => {
   });
 
   describe('findNaps2Path()', () => {
-    it('실행 가능한 첫 번째 후보 경로를 반환한다', () => {
+    it('실행 가능한 첫 번째 후보 경로를 찾아 쓰기 가능한 위치로 반환한다', () => {
       vi.spyOn(fs, 'accessSync').mockImplementation((p) => {
         if (String(p).includes('resources')) return;
         throw new Error('ENOENT');
@@ -84,7 +84,8 @@ describe('ScannerService - 단위 테스트', () => {
       const result = service.findNaps2Path();
 
       expect(result).toContain('NAPS2.Console.exe');
-      expect(result).toContain('resources');
+      // ensureWritableNaps2에 의해 naps2-app 경로로 변환됨
+      expect(result).toContain('naps2-app');
     });
 
     it('모든 후보 경로가 실패하면 null을 반환한다', () => {
@@ -698,37 +699,24 @@ describe('ScannerService - 단위 테스트', () => {
     });
   });
 
-  describe('ensureNonPortable()', () => {
-    it('포터블 마커가 없으면 원본 경로를 그대로 반환한다', () => {
-      vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        // accessSync에서 찾은 원본 경로 → 존재
-        if (String(p).includes('NAPS2.Console.exe')) return true;
-        // 포터블 마커 → 없음
-        if (String(p).includes('NAPS2.Portable.exe')) return false;
-        return false;
-      });
-      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
-
-      const result = service.findNaps2Path();
-
-      expect(result).toContain('resources');
-      expect(result).toContain('NAPS2.Console.exe');
-      // 원본 경로 그대로 (naps2-app이 아닌)
-      expect(result).not.toContain('naps2-app');
-    });
-
-    it('포터블 마커가 있으면 비포터블 복사본 경로를 반환한다', () => {
+  describe('ensureWritableNaps2()', () => {
+    it('항상 쓰기 가능한 위치(naps2-app)로 복사한다', () => {
       const copySpy = vi.spyOn(fs, 'copyFileSync').mockImplementation(() => {});
       const mkdirSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+        if (String(p).includes('.version')) return '8.2.1' as any;
+        return '' as any;
+      });
       vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
         const s = String(p);
-        // 포터블 마커 → 존재
-        if (s.includes('NAPS2.Portable.exe')) return true;
-        // 원본 exe → 존재 (accessSync용)
+        // 원본 exe → 존재
         if (s.includes('resources') && s.includes('NAPS2.Console.exe')) return true;
         // 원본 appsettings.xml → 존재
         if (s.includes('resources') && s.includes('appsettings.xml')) return true;
-        // 복사본 exe → 아직 없음
+        // 번들 .version → 존재
+        if (s.includes('naps2') && s.endsWith('.version') && !s.includes('naps2-app')) return true;
+        // 복사본 → 아직 없음
         if (s.includes('naps2-app')) return false;
         // naps2DataDir → 없음
         return false;
@@ -743,12 +731,17 @@ describe('ScannerService - 단위 테스트', () => {
       expect(mkdirSpy).toHaveBeenCalled();
     });
 
-    it('비포터블 복사본이 이미 있으면 재생성하지 않고 재사용한다', () => {
+    it('버전 일치 시 기존 복사본을 재사용한다', () => {
       const copySpy = vi.spyOn(fs, 'copyFileSync').mockImplementation(() => {});
       vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+        if (String(p).includes('.version')) return '8.2.1' as any;
+        return '' as any;
+      });
       vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
         const s = String(p);
-        if (s.includes('NAPS2.Portable.exe')) return true;
+        // .version 파일들 → 존재
+        if (s.endsWith('.version')) return true;
         // 복사본 exe와 lib 모두 존재
         if (s.includes('naps2-app') && s.includes('NAPS2.Console.exe')) return true;
         if (s.includes('naps2-app') && s.endsWith('lib')) return true;
@@ -759,18 +752,51 @@ describe('ScannerService - 단위 테스트', () => {
       const result = service.findNaps2Path();
 
       expect(result).toContain('naps2-app');
-      // 이미 있으므로 복사하지 않음
+      // 버전 일치이므로 복사하지 않음
       expect(copySpy).not.toHaveBeenCalled();
+    });
+
+    it('버전 불일치 시 기존 복사본을 제거하고 재생성한다', () => {
+      const copySpy = vi.spyOn(fs, 'copyFileSync').mockImplementation(() => {});
+      const rmSpy = vi.spyOn(fs, 'rmSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+        const s = String(p);
+        // 번들 버전: 8.3.0
+        if (s.includes('naps2') && s.endsWith('.version') && !s.includes('naps2-app')) return '8.3.0' as any;
+        // 복사본 버전: 8.2.1
+        if (s.includes('naps2-app') && s.endsWith('.version')) return '8.2.1' as any;
+        return '' as any;
+      });
+      vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+        const s = String(p);
+        if (s.endsWith('.version')) return true;
+        // 원본 exe → 존재
+        if (s.includes('resources') && s.includes('NAPS2.Console.exe')) return true;
+        if (s.includes('resources') && s.includes('appsettings.xml')) return true;
+        // 복사본 → rmSync 후 없음
+        if (s.includes('naps2-app')) return false;
+        return false;
+      });
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+
+      const result = service.findNaps2Path();
+
+      expect(result).toContain('naps2-app');
+      expect(rmSpy).toHaveBeenCalled();
+      expect(copySpy).toHaveBeenCalled();
     });
   });
 
   describe('listDevices() - 에러 전파', () => {
     it('양쪽 드라이버 모두 실패하면 에러 정보를 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
-      vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        if (String(p).includes('NAPS2.Portable.exe')) return false;
-        return true;
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+        if (String(p).includes('.version')) return '8.2.1' as any;
+        return '' as any;
       });
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
         const err = new Error('driver error');
@@ -788,10 +814,11 @@ describe('ScannerService - 단위 테스트', () => {
 
     it('양쪽 드라이버가 빈 결과(에러 없음)이면 에러 없이 빈 배열을 반환한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
-      vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        if (String(p).includes('NAPS2.Portable.exe')) return false;
-        return true;
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+        if (String(p).includes('.version')) return '8.2.1' as any;
+        return '' as any;
       });
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
         (callback as Function)(null, '\n', '');

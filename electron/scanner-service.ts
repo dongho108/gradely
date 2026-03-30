@@ -84,69 +84,102 @@ export class ScannerService {
   }
 
   /**
-   * NAPS2.Portable.exe가 있으면 포터블 모드가 활성화되어 NAPS2_DATA를 무시한다.
-   * 이를 우회하기 위해 쓰기 가능한 위치에 비포터블 복사본을 생성한다.
-   * - exe와 설정 파일만 복사 (~170KB)
-   * - lib/ 디렉토리는 원본으로의 정션(junction) 생성
+   * NAPS2를 항상 쓰기 가능한 위치({userData}/naps2-app/)에서 실행하도록 한다.
+   * C:\Program Files\ 아래에서는 NAPS2가 Data/, recovery 등을 생성하려 할 때
+   * UnauthorizedAccessException이 발생하므로, exe와 설정 파일만 복사하고
+   * lib/ 디렉토리는 원본으로의 정션(junction)을 생성한다.
+   * .version 파일 비교로 앱 업데이트 시에만 복사본을 갱신한다.
    */
-  private ensureNonPortable(originalExePath: string): string {
+  private ensureWritableNaps2(originalExePath: string): string {
     const originalAppDir = path.dirname(originalExePath);
     const naps2Root = path.dirname(originalAppDir);
-    const portableMarker = path.join(naps2Root, 'NAPS2.Portable.exe');
-
-    if (!fs.existsSync(portableMarker)) {
-      return originalExePath;
-    }
-
-    console.log('[Scanner] ensureNonPortable: 포터블 마커 발견, 비포터블 복사본 생성');
 
     const destAppDir = path.join(this.naps2AppDir, 'App');
     const destExePath = path.join(destAppDir, 'NAPS2.Console.exe');
     const destLibDir = path.join(destAppDir, 'lib');
+    const destVersionFile = path.join(this.naps2AppDir, '.version');
 
-    // 이미 복사본이 있으면 재사용
-    if (fs.existsSync(destExePath) && fs.existsSync(destLibDir)) {
-      console.log('[Scanner] ensureNonPortable: 기존 복사본 사용:', destExePath);
+    // 번들된 NAPS2 버전 확인
+    let bundledVersion = '';
+    try {
+      const versionFile = path.join(naps2Root, '.version');
+      if (fs.existsSync(versionFile)) {
+        bundledVersion = fs.readFileSync(versionFile, 'utf8').trim();
+      }
+    } catch { /* ignore */ }
+
+    // 기존 복사본 버전 확인
+    let copiedVersion = '';
+    try {
+      if (fs.existsSync(destVersionFile)) {
+        copiedVersion = fs.readFileSync(destVersionFile, 'utf8').trim();
+      }
+    } catch { /* ignore */ }
+
+    // 버전 일치 + 파일 존재 → 재사용
+    const isUpToDate = bundledVersion !== ''
+      && bundledVersion === copiedVersion
+      && fs.existsSync(destExePath)
+      && fs.existsSync(destLibDir);
+
+    if (isUpToDate) {
+      console.log('[Scanner] ensureWritableNaps2: 기존 복사본 사용:', destExePath);
       return destExePath;
     }
 
-    fs.mkdirSync(destAppDir, { recursive: true });
+    console.log('[Scanner] ensureWritableNaps2: 쓰기 가능한 복사본 생성');
 
-    // exe와 설정 파일 복사
-    const filesToCopy = ['NAPS2.Console.exe', 'appsettings.xml'];
-    for (const file of filesToCopy) {
-      const src = path.join(originalAppDir, file);
-      const dest = path.join(destAppDir, file);
-      if (fs.existsSync(src)) {
-        fs.copyFileSync(src, dest);
-        console.log('[Scanner] ensureNonPortable: 복사:', file);
+    try {
+      // 버전 불일치 시 기존 복사본 정리
+      if (copiedVersion && copiedVersion !== bundledVersion) {
+        console.log('[Scanner] ensureWritableNaps2: 버전 불일치, 기존 복사본 제거');
+        try {
+          fs.rmSync(this.naps2AppDir, { recursive: true, force: true });
+        } catch { /* ignore */ }
       }
-    }
 
-    // lib/ 디렉토리 정션 생성 (151MB 복사 회피)
-    if (!fs.existsSync(destLibDir)) {
-      const originalLibDir = path.join(originalAppDir, 'lib');
-      try {
+      fs.mkdirSync(destAppDir, { recursive: true });
+
+      // exe와 설정 파일 복사
+      const filesToCopy = ['NAPS2.Console.exe', 'appsettings.xml'];
+      for (const file of filesToCopy) {
+        const src = path.join(originalAppDir, file);
+        const dest = path.join(destAppDir, file);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest);
+          console.log('[Scanner] ensureWritableNaps2: 복사:', file);
+        }
+      }
+
+      // lib/ 디렉토리 정션 생성 (151MB 복사 회피)
+      if (!fs.existsSync(destLibDir)) {
+        const originalLibDir = path.join(originalAppDir, 'lib');
         execFileSync('powershell', [
           '-Command',
           `New-Item -ItemType Junction -Path '${destLibDir}' -Target '${originalLibDir}' -Force`,
         ], { timeout: 5000 });
-        console.log('[Scanner] ensureNonPortable: lib/ 정션 생성 완료');
-      } catch (err) {
-        console.error('[Scanner] ensureNonPortable: lib/ 정션 생성 실패:', (err as Error).message);
-        // 정션 실패 시 원본 경로로 폴백
-        return originalExePath;
+        console.log('[Scanner] ensureWritableNaps2: lib/ 정션 생성 완료');
       }
-    }
 
-    // naps2-data 디렉토리 생성
-    if (!fs.existsSync(this.naps2DataDir)) {
-      fs.mkdirSync(this.naps2DataDir, { recursive: true });
-      console.log('[Scanner] ensureNonPortable: naps2-data 디렉토리 생성:', this.naps2DataDir);
-    }
+      // naps2-data 디렉토리 생성
+      if (!fs.existsSync(this.naps2DataDir)) {
+        fs.mkdirSync(this.naps2DataDir, { recursive: true });
+        console.log('[Scanner] ensureWritableNaps2: naps2-data 디렉토리 생성:', this.naps2DataDir);
+      }
 
-    console.log('[Scanner] ensureNonPortable: 비포터블 복사본 준비 완료:', destExePath);
-    return destExePath;
+      // 버전 마커 기록
+      if (bundledVersion) {
+        try {
+          fs.writeFileSync(destVersionFile, bundledVersion, 'utf8');
+        } catch { /* ignore */ }
+      }
+
+      console.log('[Scanner] ensureWritableNaps2: 복사본 준비 완료:', destExePath);
+      return destExePath;
+    } catch (err) {
+      console.warn('[Scanner] ensureWritableNaps2: 복사본 생성 실패, 원본 사용:', (err as Error).message);
+      return originalExePath;
+    }
   }
 
   /**
@@ -189,7 +222,7 @@ export class ScannerService {
         }
         fs.accessSync(normalized, fs.constants.X_OK);
         console.log('[Scanner] findNaps2Path: 발견! 경로:', normalized);
-        const resolvedPath = this.ensureNonPortable(normalized);
+        const resolvedPath = this.ensureWritableNaps2(normalized);
         this.cachedNaps2Path = resolvedPath;
         return resolvedPath;
       } catch (err) {
