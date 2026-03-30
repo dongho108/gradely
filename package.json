@@ -84,7 +84,9 @@
           "from": "resources/naps2",
           "to": "naps2",
           "filter": [
-            "**/*"
+            "**/*",
+            "!Data",
+            "!Data/**"
           ]
         }
       ]
