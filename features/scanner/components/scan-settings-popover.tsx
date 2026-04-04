@@ -60,35 +60,19 @@ export function ScanSettingsPopover({ tabId, onClose }: ScanSettingsPopoverProps
       </div>
 
       <div className="p-4 space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs">
-            <span className="text-gray-500 block mb-1">급지방식</span>
-            <select
-              value={scanSettings.source}
-              onChange={(e) => updateScanSettings({ source: e.target.value as ScanSettings['source'] })}
-              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"
-              disabled={isScanning}
-            >
-              <option value="feeder">자동급지</option>
-              <option value="duplex">양면</option>
-              <option value="glass">평판</option>
-            </select>
-          </label>
-
-          <label className="text-xs">
-            <span className="text-gray-500 block mb-1">컬러</span>
-            <select
-              value={scanSettings.colorMode}
-              onChange={(e) => updateScanSettings({ colorMode: e.target.value as ScanSettings['colorMode'] })}
-              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"
-              disabled={isScanning}
-            >
-              <option value="bw">흑백</option>
-              <option value="gray">회색</option>
-              <option value="color">컬러</option>
-            </select>
-          </label>
-        </div>
+        <label className="text-xs block">
+          <span className="text-gray-500 block mb-1">급지방식</span>
+          <select
+            value={scanSettings.source}
+            onChange={(e) => updateScanSettings({ source: e.target.value as ScanSettings['source'] })}
+            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"
+            disabled={isScanning}
+          >
+            <option value="feeder">자동급지 (단면)</option>
+            <option value="duplex">양면</option>
+            <option value="glass">평판</option>
+          </select>
+        </label>
 
         <Button
           onClick={isScanning ? stopScan : handleStartScan}

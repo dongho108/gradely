@@ -255,32 +255,6 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-gray-600 font-medium">해상도</span>
-            <select
-              value={scanSettings.dpi}
-              onChange={(e) => updateScanSettings({ dpi: Number(e.target.value) })}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
-            >
-              <option value={200}>200 DPI</option>
-              <option value={300}>300 DPI</option>
-              <option value={600}>600 DPI</option>
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-gray-600 font-medium">컬러</span>
-            <select
-              value={scanSettings.colorMode}
-              onChange={(e) => updateScanSettings({ colorMode: e.target.value as ScanSettings['colorMode'] })}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
-            >
-              <option value="bw">흑백</option>
-              <option value="gray">회색</option>
-              <option value="color">컬러</option>
-            </select>
-          </label>
-
           <div className="flex-1" />
 
           <Button
