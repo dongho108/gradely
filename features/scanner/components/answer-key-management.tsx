@@ -1,9 +1,11 @@
 "use client"
 
 import { useRef, useState } from 'react'
-import { Trash2, Upload, ScanLine, Eye, Loader2 } from 'lucide-react'
+import { Trash2, Upload, ScanLine, Eye, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useScanStore } from '@/store/use-scan-store'
+import { AnswerKeyImagePreview } from './answer-key-image-preview'
+import type { AnswerKeyEntry } from '@/types'
 import { useScannerAvailability } from '../hooks/use-scanner-availability'
 import { extractAnswerStructure } from '@/lib/grading-service'
 import { v4 as uuidv4 } from 'uuid'
@@ -19,6 +21,7 @@ export function AnswerKeyManagement() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
   const [previewKeyId, setPreviewKeyId] = useState<string | null>(null)
+  const [imagePreviewKey, setImagePreviewKey] = useState<AnswerKeyEntry | null>(null)
 
   // USB 드라이브 스캐너 여부 판별
   const usbDevice = devices.find(d => d.driver === 'usb-drive')
@@ -219,6 +222,13 @@ export function AnswerKeyManagement() {
                     <Eye className="h-4 w-4" />
                   </button>
                   <button
+                    onClick={() => setImagePreviewKey(key)}
+                    className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="원본 이미지 보기"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => removeAnswerKey(key.id)}
                     className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                     aria-label="삭제"
@@ -262,6 +272,14 @@ export function AnswerKeyManagement() {
             </li>
           ))}
         </ul>
+      )}
+
+      {imagePreviewKey && (
+        <AnswerKeyImagePreview
+          file={imagePreviewKey.file}
+          title={imagePreviewKey.title}
+          onClose={() => setImagePreviewKey(null)}
+        />
       )}
     </div>
   )

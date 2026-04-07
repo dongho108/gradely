@@ -7,7 +7,8 @@ import { useScannerAvailability } from '@/features/scanner/hooks/use-scanner-ava
 import { base64ToFile } from '@/lib/scan-utils'
 import { extractAnswerStructure } from '@/lib/grading-service'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ScanLine, Loader2, Check, X, Plus, Upload, Scissors } from 'lucide-react'
+import { ArrowLeft, ScanLine, Loader2, Check, X, Plus, Upload, Scissors, Eye } from 'lucide-react'
+import { AnswerKeyImagePreview } from './answer-key-image-preview'
 import { v4 as uuidv4 } from 'uuid'
 import { cn } from '@/lib/utils'
 import type { ScanOptions } from '@/types'
@@ -33,6 +34,7 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
   const { devices } = useScannerAvailability()
 
   const [groups, setGroups] = useState<AnswerKeyGroup[]>([])
+  const [previewGroup, setPreviewGroup] = useState<AnswerKeyGroup | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scanPageCount, setScanPageCount] = useState(0)
   const shouldStopRef = useRef(false)
@@ -338,6 +340,13 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setPreviewGroup(group)}
+                    className="p-1.5 rounded-md hover:bg-gray-200 text-gray-500 transition-colors"
+                    title="미리보기"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
                   {group.pages.length > 1 && (
                     <button
                       onClick={() => splitGroup(group.id)}
@@ -403,6 +412,14 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
           탭 생성하기 ({readyCount}개)
         </Button>
       </div>
+
+      {previewGroup && (
+        <AnswerKeyImagePreview
+          file={previewGroup.pages[0].file}
+          title={previewGroup.title || `정답지 ${groups.indexOf(previewGroup) + 1}`}
+          onClose={() => setPreviewGroup(null)}
+        />
+      )}
     </div>
   )
 }
