@@ -49,8 +49,8 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
   const [showScanPopover, setShowScanPopover] = useState(false);
   const { available: scannerAvailable, isElectron: isScannerElectron } = useScannerAvailability();
 
-  // Queue system for parallel processing (max 5 concurrent)
-  const MAX_CONCURRENT = 5;
+  // Queue system for parallel processing (max 20 concurrent)
+  const MAX_CONCURRENT = 20;
   const processingRef = useRef<{
     queue: string[];
     activeCount: number;
