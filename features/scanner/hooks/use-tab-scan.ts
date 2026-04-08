@@ -33,7 +33,6 @@ export function useTabScan(tabId: string): UseTabScanReturn {
     const mergedScanOptions: ScanOptions = {
       format: 'jpeg',
       source: 'feeder',
-      dpi: 200,
       ...scanOptions,
     }
 

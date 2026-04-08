@@ -15,8 +15,6 @@ interface BatchScanModalProps {
 }
 
 type Source = "feeder" | "glass" | "duplex"
-type Dpi = 150 | 200 | 300 | 600
-type ColorMode = "bw" | "gray" | "color"
 type PageMode = "auto" | "fixed"
 
 export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModalProps) {
@@ -27,8 +25,6 @@ export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModal
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<ScannerDevice | null>(null)
   const [source, setSource] = useState<Source>("feeder")
-  const [dpi, setDpi] = useState<Dpi>(300)
-  const [colorMode, setColorMode] = useState<ColorMode>("bw")
   const [pageMode, setPageMode] = useState<PageMode>("auto")
   const [fixedPageCount, setFixedPageCount] = useState(2)
   const [onTouchLaunched, setOnTouchLaunched] = useState(false)
@@ -52,8 +48,6 @@ export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModal
   function handleStartScan() {
     const scanOptions: ScanOptions = {
       source,
-      dpi,
-      colorMode,
     }
     startScan({ scanOptions })
   }
@@ -315,33 +309,6 @@ export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModal
                     >
                       <option value="feeder">자동급지</option>
                       <option value="duplex">양면</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <label className="w-24 shrink-0 text-sm text-gray-600">해상도</label>
-                    <select
-                      value={dpi}
-                      onChange={(e) => setDpi(Number(e.target.value) as Dpi)}
-                      className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value={150}>150 dpi</option>
-                      <option value={200}>200 dpi</option>
-                      <option value={300}>300 dpi</option>
-                      <option value={600}>600 dpi</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <label className="w-24 shrink-0 text-sm text-gray-600">컬러모드</label>
-                    <select
-                      value={colorMode}
-                      onChange={(e) => setColorMode(e.target.value as ColorMode)}
-                      className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="bw">흑백</option>
-                      <option value="gray">회색조</option>
-                      <option value="color">컬러</option>
                     </select>
                   </div>
                 </div>

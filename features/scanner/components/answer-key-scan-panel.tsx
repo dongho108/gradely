@@ -103,8 +103,6 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
     const scanOptions: ScanOptions = {
       format: 'jpeg',
       source: scanSettings.source,
-      dpi: scanSettings.dpi,
-      colorMode: scanSettings.colorMode,
     }
 
     shouldStopRef.current = false

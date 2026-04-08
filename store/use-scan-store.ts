@@ -4,8 +4,6 @@ import type { StudentExamStructure } from '@/types/grading'
 
 export interface ScanSettings {
   source: 'glass' | 'feeder' | 'duplex'
-  dpi: number
-  colorMode: 'color' | 'gray' | 'bw'
 }
 
 interface ScanState {
@@ -45,8 +43,6 @@ interface ScanActions {
 
 const defaultScanSettings: ScanSettings = {
   source: 'feeder',
-  dpi: 300,
-  colorMode: 'bw',
 }
 
 export const useScanStore = create<ScanState & ScanActions>()((set) => ({

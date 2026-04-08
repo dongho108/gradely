@@ -5,7 +5,7 @@ import { useScanStore } from '@/store/use-scan-store'
 
 // Mock scanner availability
 vi.mock('../../hooks/use-scanner-availability', () => ({
-  useScannerAvailability: () => ({ available: true, isElectron: true }),
+  useScannerAvailability: () => ({ available: true, isElectron: true, devices: [] }),
 }))
 
 // Mock grading service

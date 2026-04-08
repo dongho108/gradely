@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
-import { useScanStore, type ScanSettings } from '@/store/use-scan-store'
+import { useScanStore } from '@/store/use-scan-store'
 import { useTabScan } from '@/features/scanner/hooks/use-tab-scan'
 import { useScannerAvailability } from '@/features/scanner/hooks/use-scanner-availability'
 import { ScanProgressBar } from './scan-progress-bar'
@@ -37,8 +37,6 @@ export function ScanSettingsPopover({ tabId, onClose }: ScanSettingsPopoverProps
     startScan({
       scanOptions: {
         source: scanSettings.source,
-        dpi: 200, // Lower DPI for student papers (faster)
-        colorMode: scanSettings.colorMode,
       },
     })
   }
