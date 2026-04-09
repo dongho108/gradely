@@ -9,7 +9,7 @@ import { useTabStore, StoreExamSession } from "@/store/use-tab-store";
 import { useInitialData } from "@/hooks/use-initial-data";
 import { useAuthInit } from "@/hooks/use-auth-init";
 import { useSessionSync } from "@/hooks/use-session-sync";
-import { resolveFile } from "@/lib/file-resolver";
+import { resolveFile, evictFile } from "@/lib/file-resolver";
 import { Loader2 } from "lucide-react";
 
 /**
@@ -19,28 +19,35 @@ import { Loader2 } from "lucide-react";
 function useAnswerKeyFile(activeTab: StoreExamSession | undefined) {
   const [file, setFile] = useState<File | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!activeTab || activeTab.status !== 'ready') {
       setFile(undefined);
+      setError(null);
       return;
     }
 
     const akf = activeTab.answerKeyFile;
     if (!akf) {
       setFile(undefined);
+      setError(null);
       return;
     }
 
     // If we have a local file reference, use it
     if (akf.fileRef) {
       setFile(akf.fileRef);
+      setError(null);
       return;
     }
 
     // If we have a storage path, download it
     if (akf.storagePath) {
+      setFile(undefined);
       setIsLoading(true);
+      setError(null);
       resolveFile(akf.storagePath, akf.name)
         .then((resolved) => {
           setFile(resolved);
@@ -54,12 +61,20 @@ function useAnswerKeyFile(activeTab: StoreExamSession | undefined) {
             ),
           });
         })
-        .catch((err) => console.error('[AnswerKeyResolve] Failed:', err))
+        .catch((err) => {
+          console.error('[AnswerKeyResolve] Failed:', err);
+          setError('파일을 불러올 수 없습니다. 다시 시도해주세요.');
+        })
         .finally(() => setIsLoading(false));
     }
-  }, [activeTab?.id, activeTab?.status, activeTab?.answerKeyFile?.storagePath, activeTab?.answerKeyFile?.fileRef]);
+  }, [activeTab?.id, activeTab?.status, activeTab?.answerKeyFile?.storagePath, activeTab?.answerKeyFile?.fileRef, retryKey]);
 
-  return { file, isLoading };
+  const retry = () => {
+    evictFile(activeTab?.answerKeyFile?.storagePath ?? '');
+    setRetryKey((k) => k + 1);
+  };
+
+  return { file, isLoading, error, retry };
 }
 
 export default function Home() {
@@ -69,7 +84,7 @@ export default function Home() {
 
   const { activeTabId, tabs } = useTabStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  const { file: answerKeyFile, isLoading: isResolvingFile } = useAnswerKeyFile(activeTab);
+  const { file: answerKeyFile, isLoading: isResolvingFile, error: resolveError, retry: retryResolve } = useAnswerKeyFile(activeTab);
   const [showAnswerKeyScan, setShowAnswerKeyScan] = useState(false);
 
   return (
@@ -92,6 +107,16 @@ export default function Home() {
              <div className="flex flex-col h-full items-center justify-center text-gray-400 gap-2">
                <Loader2 className="w-8 h-8 animate-spin text-primary" />
                <span>파일 불러오는 중...</span>
+             </div>
+           ) : resolveError ? (
+             <div className="flex flex-col h-full items-center justify-center text-gray-500 gap-3">
+               <p>{resolveError}</p>
+               <button
+                 onClick={retryResolve}
+                 className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+               >
+                 다시 시도
+               </button>
              </div>
            ) : (
              <div className="flex h-full items-center justify-center text-gray-400">

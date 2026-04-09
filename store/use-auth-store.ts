@@ -21,13 +21,18 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: () => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      set({
-        user: session?.user ?? null,
-        isAuthenticated: !!session?.user,
-        isLoading: false,
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        set({
+          user: session?.user ?? null,
+          isAuthenticated: !!session?.user,
+          isLoading: false,
+        });
+      })
+      .catch((err) => {
+        console.error('[Auth] Failed to get session:', err);
+        set({ user: null, isAuthenticated: false, isLoading: false });
       });
-    });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
