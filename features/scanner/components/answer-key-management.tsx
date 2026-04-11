@@ -16,7 +16,7 @@ interface PendingFile {
 }
 
 export function AnswerKeyManagement() {
-  const { answerKeys, addAnswerKey, removeAnswerKey } = useScanStore()
+  const { answerKeys, addAnswerKey, removeAnswerKey, scanSettings } = useScanStore()
   const { available, isElectron, devices } = useScannerAvailability()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
@@ -108,7 +108,7 @@ export function AnswerKeyManagement() {
     setPendingFiles((prev) => [...prev, { id: pendingId, fileName: '스캐너 스캔 중...' }])
 
     try {
-      const { filePath, mimeType, additionalFiles } = await window.electronAPI!.scanner.scan({ format: 'jpeg', source: 'feeder' })
+      const { filePath, mimeType, additionalFiles } = await window.electronAPI!.scanner.scan({ format: 'jpeg', source: scanSettings.source })
 
       // 첫 번째 페이지 처리
       setPendingFiles((prev) =>

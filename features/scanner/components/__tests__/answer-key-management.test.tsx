@@ -223,6 +223,23 @@ describe('AnswerKeyManagement', () => {
     })
   })
 
+  it('duplex 설정 시 source: duplex로 스캔 호출', async () => {
+    const { scanMock } = setupSinglePageScan()
+    const mockStructure = { title: 'Test', answers: {}, totalQuestions: 0 }
+    vi.mocked(extractAnswerStructure).mockResolvedValue(mockStructure)
+    useScanStore.setState({
+      addAnswerKey: vi.fn(),
+      scanSettings: { source: 'duplex', dpi: 300 },
+    })
+
+    render(<AnswerKeyManagement />)
+    fireEvent.click(screen.getByRole('button', { name: /스캐너로 스캔/ }))
+
+    await waitFor(() => {
+      expect(scanMock).toHaveBeenCalledWith(expect.objectContaining({ source: 'duplex' }))
+    })
+  })
+
   it('스캔 중 로딩 표시 → 완료 후 제거', async () => {
     let resolveScan: (value: any) => void
     const scanPromise = new Promise((resolve) => { resolveScan = resolve })
