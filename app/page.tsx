@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
-import { UploadAnswerKey } from "@/features/grader/components/upload-answer-key";
 import { GradingWorkspace } from "@/features/grader/components/grading-workspace";
 import { AnswerKeyScanPanel } from "@/features/scanner/components/answer-key-scan-panel";
 import { useTabStore, StoreExamSession } from "@/store/use-tab-store";
@@ -91,18 +90,14 @@ export default function Home() {
   const { activeTabId, tabs } = useTabStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const { files: answerKeyFiles, isLoading: isResolvingFile, error: resolveError, retry: retryResolve } = useAnswerKeyFiles(activeTab);
-  const [showAnswerKeyScan, setShowAnswerKeyScan] = useState(false);
-
   return (
     <div className="flex flex-col h-screen w-full bg-gray-50 overflow-hidden">
       <Header />
 
       <main className="flex-1 overflow-hidden relative p-4">
-        {showAnswerKeyScan ? (
-          <AnswerKeyScanPanel onClose={() => setShowAnswerKeyScan(false)} />
-        ) : activeTab ? (
+        {activeTab ? (
            activeTab.status === 'idle' || activeTab.status === 'extracting' ? (
-             <UploadAnswerKey onStartScan={() => setShowAnswerKeyScan(true)} />
+             <AnswerKeyScanPanel />
            ) : activeTab.status === 'ready' && answerKeyFiles ? (
              <GradingWorkspace
                key={activeTab.id}

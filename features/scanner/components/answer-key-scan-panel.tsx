@@ -8,7 +8,7 @@ import { base64ToFile } from '@/lib/scan-utils'
 import { extractAnswerStructureFromImages } from '@/lib/grading-service'
 import { filesToImages } from '@/lib/file-utils'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ScanLine, Loader2, Check, X, Plus, Upload, Scissors, Eye } from 'lucide-react'
+import { ScanLine, Loader2, Check, X, Plus, Upload, Scissors, Eye } from 'lucide-react'
 import { AnswerKeyImagePreview } from './answer-key-image-preview'
 import { v4 as uuidv4 } from 'uuid'
 import { cn } from '@/lib/utils'
@@ -25,11 +25,7 @@ interface AnswerKeyGroup {
   error?: string
 }
 
-interface AnswerKeyScanPanelProps {
-  onClose: () => void
-}
-
-export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
+export function AnswerKeyScanPanel() {
   const { scanSettings, updateScanSettings } = useScanStore()
   const { addTabFromAnswerKey } = useTabStore()
   const { devices } = useScannerAvailability()
@@ -221,8 +217,7 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
       })
     }
 
-    onClose()
-  }, [groups, addTabFromAnswerKey, onClose])
+  }, [groups, addTabFromAnswerKey])
 
   const readyCount = groups.filter(g => g.status === 'ready').length
   const analyzingCount = groups.filter(g => g.status === 'analyzing').length
@@ -231,14 +226,6 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
     <div className="flex flex-col items-center w-full h-full p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
       <div className="w-full max-w-2xl">
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-4"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          돌아가기
-        </button>
-
         <div className="text-center mb-6 space-y-2">
           <h2 className="text-3xl font-bold text-[#164E63]">정답지 스캔</h2>
           <p className="text-gray-500">스캐너로 정답지를 스캔하면 각각 별도 탭으로 생성됩니다.</p>
