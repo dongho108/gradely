@@ -10,36 +10,65 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 interface PDFViewerProps {
-  file: File | string;
+  file: File | File[] | string;
   className?: string;
 }
 
 export function PDFViewer({ file, className }: PDFViewerProps) {
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+
   useEffect(() => {
     // Configure PDF worker client-side only
     pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-    
+
+    // Handle File[] (multi-page image files from duplex scan)
+    if (Array.isArray(file)) {
+      const allImages = file.every(f => f.type.startsWith('image/'));
+      if (allImages) {
+        setIsImage(true);
+        const urls = file.map(f => URL.createObjectURL(f));
+        setImageUrls(urls);
+        setImageUrl(urls[0] ?? null);
+        setNumPages(urls.length);
+        setPageNumber(1);
+        setLoading(false);
+        return () => urls.forEach(u => URL.revokeObjectURL(u));
+      }
+      // For non-image File[], use first file as PDF
+      const firstFile = file[0];
+      if (firstFile) {
+        setIsImage(false);
+        setImageUrl(null);
+        setImageUrls([]);
+      }
+      return;
+    }
+
     // Check if file is an image
     if (file instanceof File) {
       if (file.type.startsWith('image/')) {
         setIsImage(true);
         const url = URL.createObjectURL(file);
         setImageUrl(url);
+        setImageUrls([url]);
         setNumPages(1);
         setPageNumber(1);
         return () => URL.revokeObjectURL(url);
       } else {
         setIsImage(false);
         setImageUrl(null);
+        setImageUrls([]);
       }
     } else if (typeof file === 'string' && (file.startsWith('data:image/') || file.match(/\.(jpg|jpeg|png|webp)$/i))) {
       setIsImage(true);
       setImageUrl(file);
+      setImageUrls([file]);
       setNumPages(1);
       setPageNumber(1);
     } else {
       setIsImage(false);
       setImageUrl(null);
+      setImageUrls([]);
     }
   }, [file]);
 
@@ -111,10 +140,10 @@ export function PDFViewer({ file, className }: PDFViewerProps) {
               maxHeight: 'none'
             }}
           >
-            {imageUrl && (
-              <img 
-                src={imageUrl} 
-                alt="Exam Paper" 
+            {imageUrls.length > 0 && (
+              <img
+                src={imageUrls[pageNumber - 1] ?? imageUrls[0]}
+                alt={`Exam Paper${imageUrls.length > 1 ? ` - Page ${pageNumber}` : ''}`}
                 className="w-full h-auto block"
                 onLoad={handleImageLoad}
               />
@@ -123,7 +152,7 @@ export function PDFViewer({ file, className }: PDFViewerProps) {
           </div>
         ) : (
           <Document
-            file={file}
+            file={Array.isArray(file) ? file[0] : file}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
               <div className="flex items-center gap-2 text-primary font-medium animate-pulse">

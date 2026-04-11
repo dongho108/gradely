@@ -5,8 +5,9 @@ import { useScanStore, type ScanSettings } from '@/store/use-scan-store'
 import { useTabScan } from '@/features/scanner/hooks/use-tab-scan'
 import { useScannerAvailability } from '@/features/scanner/hooks/use-scanner-availability'
 import { ScanProgressBar } from './scan-progress-bar'
+import { useTabStore } from '@/store/use-tab-store'
 import { Button } from '@/components/ui/button'
-import { ScanLine, X } from 'lucide-react'
+import { ScanLine, X, Upload } from 'lucide-react'
 
 interface ScanSettingsPopoverProps {
   tabId: string
@@ -16,8 +17,10 @@ interface ScanSettingsPopoverProps {
 export function ScanSettingsPopover({ tabId, onClose }: ScanSettingsPopoverProps) {
   const { scanSettings, updateScanSettings } = useScanStore()
   const { isScanning, pageCount, lastError, startScan, stopScan } = useTabScan(tabId)
+  const { addSubmission, setSubmissionStatus } = useTabStore()
   const { devices } = useScannerAvailability()
   const popoverRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isDevMode = process.env.NODE_ENV === 'development'
     && (typeof window === 'undefined' || !window.electronAPI?.isElectron)
@@ -32,6 +35,17 @@ export function ScanSettingsPopover({ tabId, onClose }: ScanSettingsPopoverProps
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [onClose, isScanning])
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    for (const file of Array.from(files)) {
+      const id = Math.random().toString(36).substring(2, 9)
+      addSubmission(tabId, file, id)
+      setSubmissionStatus(tabId, id, 'queued')
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   const handleStartScan = () => {
     startScan({
@@ -79,6 +93,24 @@ export function ScanSettingsPopover({ tabId, onClose }: ScanSettingsPopoverProps
         >
           <ScanLine className="h-4 w-4" />
           {isScanning ? '스캔 중단' : '스캔 시작'}
+        </Button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg"
+          multiple
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isScanning}
+        >
+          <Upload className="h-4 w-4" />
+          파일로도 추가
         </Button>
       </div>
 

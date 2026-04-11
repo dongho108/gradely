@@ -1,11 +1,37 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { ExamSession, ClassifiedStudent, AnswerKeyEntry } from '@/types';
-import { StudentSubmission, GradingResult, AnswerKeyStructure } from '@/types/grading';
+import { ExamSession, ClassifiedStudent, AnswerKeyEntry, ScannedPage } from '@/types';
+import { StudentSubmission, GradingResult, AnswerKeyStructure, StudentExamStructure } from '@/types/grading';
+
+/**
+ * Merges OCR results from multiple scanned pages into a single StudentExamStructure.
+ * Returns undefined if no pages have OCR results.
+ */
+function mergeOcrResults(pages: ScannedPage[]): StudentExamStructure | undefined {
+  const withOcr = pages.filter(p => p.ocrResult);
+  if (withOcr.length === 0) return undefined;
+  if (withOcr.length === 1) return withOcr[0].ocrResult;
+
+  const base = withOcr[0].ocrResult!;
+  const mergedAnswers = { ...base.answers };
+  let totalQuestions = base.totalQuestions;
+
+  for (let i = 1; i < withOcr.length; i++) {
+    const ocr = withOcr[i].ocrResult!;
+    Object.assign(mergedAnswers, ocr.answers);
+    totalQuestions = Math.max(totalQuestions, ocr.totalQuestions, Object.keys(mergedAnswers).length);
+  }
+
+  return {
+    ...base,
+    answers: mergedAnswers,
+    totalQuestions,
+  };
+}
 
 // Extend ExamSession to include answerKeyFile and answerKeyStructure
 export interface StoreExamSession extends ExamSession {
-  answerKeyFile?: { name: string; size: number; fileRef?: File; storagePath?: string };
+  answerKeyFile?: { name: string; size: number; fileRefs?: File[]; storagePath?: string };
   answerKeyStructure?: AnswerKeyStructure | null;
 }
 
@@ -30,7 +56,7 @@ interface TabState {
 
   // Scanner Actions
   addTabFromScan: (params: { students: ClassifiedStudent[]; answerKeys: AnswerKeyEntry[] }) => number;
-  addTabFromAnswerKey: (answerKey: { title: string; file: File; structure: import('@/types/grading').AnswerKeyStructure }) => string;
+  addTabFromAnswerKey: (answerKey: { title: string; files: File[]; structure: import('@/types/grading').AnswerKeyStructure }) => string;
 
   // Persistence Actions
   hydrateFromServer: (sessions: StoreExamSession[], submissions: Record<string, StudentSubmission[]>) => void;
@@ -92,7 +118,7 @@ export const useTabStore = create<TabState>((set, get) => ({
               answerKeyFile: {
                 name: file.name,
                 size: file.size,
-                fileRef: file,
+                fileRefs: [file],
               },
             }
           : t
@@ -113,7 +139,7 @@ export const useTabStore = create<TabState>((set, get) => ({
       id: id || generateId(),
       studentName: file.name.replace('.pdf', '').replace(/_/g, ' '),
       fileName: file.name,
-      fileRef: file,
+      fileRefs: [file],
       status: 'pending' as const,
       uploadedAt: Date.now(),
     };
@@ -207,22 +233,26 @@ export const useTabStore = create<TabState>((set, get) => ({
         createdAt: Date.now(),
         status: 'ready',
         answerKeyFile: {
-          name: group.answerKey.file.name,
-          size: group.answerKey.file.size,
-          fileRef: group.answerKey.file,
+          name: group.answerKey.files[0].name,
+          size: group.answerKey.files.reduce((sum, f) => sum + f.size, 0),
+          fileRefs: group.answerKey.files,
         },
         answerKeyStructure: group.answerKey.structure,
       });
 
-      newSubmissions[tabId] = group.students.map((student) => ({
-        id: generateId(),
-        studentName: student.name,
-        fileName: student.pages[0]?.file.name ?? `${student.name}.pdf`,
-        fileRef: student.pages[0]?.file,
-        status: 'queued' as const,
-        uploadedAt: Date.now(),
-        preExtractedStructure: student.pages[0]?.ocrResult,
-      }));
+      newSubmissions[tabId] = group.students.map((student) => {
+        // Merge OCR results from all pages into a single structure
+        const mergedStructure = mergeOcrResults(student.pages);
+        return {
+          id: generateId(),
+          studentName: student.name,
+          fileName: student.pages[0]?.file.name ?? `${student.name}.pdf`,
+          fileRefs: student.pages.map(p => p.file),
+          status: 'queued' as const,
+          uploadedAt: Date.now(),
+          preExtractedStructure: mergedStructure,
+        };
+      });
     }
 
     set((state) => ({
@@ -242,9 +272,9 @@ export const useTabStore = create<TabState>((set, get) => ({
       createdAt: Date.now(),
       status: 'ready',
       answerKeyFile: {
-        name: answerKey.file.name,
-        size: answerKey.file.size,
-        fileRef: answerKey.file,
+        name: answerKey.files[0].name,
+        size: answerKey.files.reduce((sum, f) => sum + f.size, 0),
+        fileRefs: answerKey.files,
       },
       answerKeyStructure: answerKey.structure,
     };

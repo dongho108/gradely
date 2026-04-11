@@ -61,7 +61,7 @@ describe('ScanWorkflowShell', () => {
         {
           id: 'key-1',
           title: '수학 기말고사',
-          file: new File([''], 'math.pdf'),
+          files: [new File([''], 'math.pdf')],
           structure: { title: '수학 기말고사', answers: {}, totalQuestions: 10 },
           createdAt: Date.now(),
         },

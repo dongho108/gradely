@@ -14,7 +14,8 @@ import { Upload, Sparkles, FileText, ClipboardList, ScanLine } from "lucide-reac
 import { ScanSettingsPopover } from "@/features/scanner/components/scan-settings-popover";
 import { useScannerAvailability } from "@/features/scanner/hooks/use-scanner-availability";
 import { Button } from "@/components/ui/button";
-import { extractExamStructure, calculateGradingResult, recalculateAfterEdit, toggleCorrectStatus } from "@/lib/grading-service";
+import { extractExamStructure, extractExamStructureFromImages, calculateGradingResult, recalculateAfterEdit, toggleCorrectStatus } from "@/lib/grading-service";
+import { filesToImages } from "@/lib/file-utils";
 import { cn } from "@/lib/utils";
 import { uploadAndTrackSubmission } from "@/lib/auto-save";
 import { resolveFile } from "@/lib/file-resolver";
@@ -30,10 +31,10 @@ const PDFViewer = dynamic(() => import("./pdf-viewer").then(mod => mod.PDFViewer
 
 interface GradingWorkspaceProps {
   tabId: string;
-  answerKeyFile: File;
+  answerKeyFiles: File[];
 }
 
-export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps) {
+export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProps) {
   const { addSubmission, updateSubmissionGrade, submissions, setSubmissionStatus } = useTabStore();
   const user = useAuthStore((s) => s.user);
   const [selectedSubmission, setSelectedSubmission] = useState<StudentSubmission | null>(null);
@@ -76,14 +77,18 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
       const submission = useTabStore.getState().submissions[tabId]?.find(s => s.id === submissionId);
       if (!submission) throw new Error('Submission not found');
 
-      let file = submission.fileRef;
-      if (!file && submission.storagePath) {
-        file = await resolveFile(submission.storagePath, submission.fileName);
+      let files = submission.fileRefs;
+      if ((!files || files.length === 0) && submission.storagePath) {
+        const resolved = await resolveFile(submission.storagePath, submission.fileName);
+        files = [resolved];
       }
-      if (!file) throw new Error('No file available for submission');
+      if (!files || files.length === 0) throw new Error('No file available for submission');
 
-      const examStructure = submission.preExtractedStructure
-        ?? await extractExamStructure(file);
+      let examStructure = submission.preExtractedStructure;
+      if (!examStructure) {
+        const images = await filesToImages(files);
+        examStructure = await extractExamStructureFromImages(images);
+      }
       const result = await calculateGradingResult(submissionId, answerKeyStructure, examStructure);
       updateSubmissionGrade(tabId, submissionId, result);
     } catch (error) {
@@ -248,23 +253,23 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
     ? tabSubmissions.find(s => s.id === selectedSubmission.id) || selectedSubmission
     : null;
 
-  // Resolve file for current submission (may need to download from storage)
-  const [resolvedSubmissionFile, setResolvedSubmissionFile] = useState<File | undefined>(undefined);
+  // Resolve files for current submission (may need to download from storage)
+  const [resolvedSubmissionFiles, setResolvedSubmissionFiles] = useState<File[] | undefined>(undefined);
   useEffect(() => {
     if (!currentSubmission) {
-      setResolvedSubmissionFile(undefined);
+      setResolvedSubmissionFiles(undefined);
       return;
     }
-    if (currentSubmission.fileRef) {
-      setResolvedSubmissionFile(currentSubmission.fileRef);
+    if (currentSubmission.fileRefs && currentSubmission.fileRefs.length > 0) {
+      setResolvedSubmissionFiles(currentSubmission.fileRefs);
       return;
     }
     if (currentSubmission.storagePath) {
       resolveFile(currentSubmission.storagePath, currentSubmission.fileName)
-        .then(setResolvedSubmissionFile)
+        .then((f) => setResolvedSubmissionFiles([f]))
         .catch((err) => console.error('[GradingWorkspace] Failed to resolve file:', err));
     }
-  }, [currentSubmission?.id, currentSubmission?.fileRef, currentSubmission?.storagePath]);
+  }, [currentSubmission?.id, currentSubmission?.fileRefs, currentSubmission?.storagePath]);
 
   return (
     <div className="flex h-full gap-4 overflow-hidden">
@@ -305,33 +310,54 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
             onChange={handleFileUpload}
           />
           <div className="flex gap-2">
-            <Button
-              variant="cta"
-              className="flex-1 gap-2 py-6 text-base font-bold shadow-lg shadow-primary/20"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isGrading}
-            >
-              {isGrading ? (
-                <>
-                  <Sparkles className="w-5 h-5 animate-spin" />
-                  채점 중...
-                </>
-              ) : (
-                <>
+            {isScannerElectron && scannerAvailable ? (
+              <>
+                <Button
+                  variant="cta"
+                  className="flex-1 gap-2 py-6 text-base font-bold shadow-lg shadow-primary/20"
+                  onClick={() => setShowScanPopover(prev => !prev)}
+                  disabled={isGrading}
+                >
+                  {isGrading ? (
+                    <>
+                      <Sparkles className="w-5 h-5 animate-spin" />
+                      채점 중...
+                    </>
+                  ) : (
+                    <>
+                      <ScanLine className="w-5 h-5" />
+                      학생 답안 스캔
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="py-6 px-3 shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isGrading}
+                  title="파일 업로드"
+                >
                   <Upload className="w-5 h-5" />
-                  학생 답안 업로드
-                </>
-              )}
-            </Button>
-            {isScannerElectron && scannerAvailable && (
+                </Button>
+              </>
+            ) : (
               <Button
-                variant="outline"
-                className="py-6 px-3 shrink-0"
-                onClick={() => setShowScanPopover(prev => !prev)}
+                variant="cta"
+                className="flex-1 gap-2 py-6 text-base font-bold shadow-lg shadow-primary/20"
+                onClick={() => fileInputRef.current?.click()}
                 disabled={isGrading}
-                title="스캐너로 스캔"
               >
-                <ScanLine className="w-5 h-5" />
+                {isGrading ? (
+                  <>
+                    <Sparkles className="w-5 h-5 animate-spin" />
+                    채점 중...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5" />
+                    학생 답안 업로드
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -419,7 +445,7 @@ export function GradingWorkspace({ tabId, answerKeyFile }: GradingWorkspaceProps
               </div>
             ) : (
               <PDFViewer
-                  file={currentSubmission ? (resolvedSubmissionFile ?? answerKeyFile) : answerKeyFile}
+                  file={currentSubmission ? (resolvedSubmissionFiles ?? answerKeyFiles) : answerKeyFiles}
                   className="flex-1"
               />
             )}

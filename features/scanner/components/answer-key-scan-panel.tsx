@@ -5,7 +5,8 @@ import { useScanStore, type ScanSettings } from '@/store/use-scan-store'
 import { useTabStore } from '@/store/use-tab-store'
 import { useScannerAvailability } from '@/features/scanner/hooks/use-scanner-availability'
 import { base64ToFile } from '@/lib/scan-utils'
-import { extractAnswerStructure } from '@/lib/grading-service'
+import { extractAnswerStructureFromImages } from '@/lib/grading-service'
+import { filesToImages } from '@/lib/file-utils'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, ScanLine, Loader2, Check, X, Plus, Upload, Scissors, Eye } from 'lucide-react'
 import { AnswerKeyImagePreview } from './answer-key-image-preview'
@@ -75,9 +76,8 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
     setGroups(prev => prev.map(g => g.id === group.id ? { ...g, status: 'analyzing' } : g))
 
     try {
-      // For multi-page groups, use the first page for analysis
-      // TODO: merge pages into single PDF for multi-page answer keys
-      const structure = await extractAnswerStructure(group.pages[0].file)
+      const allImages = await filesToImages(group.pages.map(p => p.file))
+      const structure = await extractAnswerStructureFromImages(allImages)
 
       setGroups(prev => prev.map(g =>
         g.id === group.id
@@ -216,7 +216,7 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
     for (const group of readyGroups) {
       addTabFromAnswerKey({
         title: group.title || 'New Exam',
-        file: group.pages[0].file,
+        files: group.pages.map(p => p.file),
         structure: group.structure!,
       })
     }
@@ -418,7 +418,7 @@ export function AnswerKeyScanPanel({ onClose }: AnswerKeyScanPanelProps) {
 
       {previewGroup && (
         <AnswerKeyImagePreview
-          file={previewGroup.pages[0].file}
+          files={previewGroup.pages.map(p => p.file)}
           title={previewGroup.title || `정답지 ${groups.indexOf(previewGroup) + 1}`}
           onClose={() => setPreviewGroup(null)}
         />

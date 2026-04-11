@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AnswerKeyImagePreview } from '../answer-key-image-preview'
 
-// Mock fileToImages
+// Mock filesToImages
 vi.mock('@/lib/file-utils', () => ({
-  fileToImages: vi.fn(),
+  filesToImages: vi.fn(),
 }))
 
-import { fileToImages } from '@/lib/file-utils'
+import { filesToImages } from '@/lib/file-utils'
 
-const mockFileToImages = vi.mocked(fileToImages)
+const mockFilesToImages = vi.mocked(filesToImages)
 
 function createMockFile(name = 'test.png', type = 'image/png') {
   return new File(['fake-content'], name, { type })
@@ -17,7 +17,7 @@ function createMockFile(name = 'test.png', type = 'image/png') {
 
 describe('AnswerKeyImagePreview', () => {
   const defaultProps = {
-    file: createMockFile(),
+    files: [createMockFile()],
     title: '테스트 정답지',
     onClose: vi.fn(),
   }
@@ -28,7 +28,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('shows loading state initially', () => {
-    mockFileToImages.mockReturnValue(new Promise(() => {})) // never resolves
+    mockFilesToImages.mockReturnValue(new Promise(() => {})) // never resolves
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -36,7 +36,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('displays image after loading', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -49,7 +49,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('shows title in the modal', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -57,7 +57,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('shows page navigation for multi-page PDFs', async () => {
-    mockFileToImages.mockResolvedValue([
+    mockFilesToImages.mockResolvedValue([
       'data:image/jpeg;base64,page1',
       'data:image/jpeg;base64,page2',
       'data:image/jpeg;base64,page3',
@@ -75,7 +75,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('navigates pages with arrow buttons', async () => {
-    mockFileToImages.mockResolvedValue([
+    mockFilesToImages.mockResolvedValue([
       'data:image/jpeg;base64,page1',
       'data:image/jpeg;base64,page2',
     ])
@@ -96,7 +96,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('calls onClose when Escape key is pressed', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -109,7 +109,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('calls onClose on backdrop click', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -122,7 +122,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('calls onClose when close button is clicked', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -135,7 +135,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('shows error message when fileToImages fails', async () => {
-    mockFileToImages.mockRejectedValue(new Error('Unsupported file type'))
+    mockFilesToImages.mockRejectedValue(new Error('Unsupported file type'))
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 
@@ -145,7 +145,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('navigates pages with keyboard arrows', async () => {
-    mockFileToImages.mockResolvedValue([
+    mockFilesToImages.mockResolvedValue([
       'data:image/jpeg;base64,page1',
       'data:image/jpeg;base64,page2',
     ])
@@ -164,7 +164,7 @@ describe('AnswerKeyImagePreview', () => {
   })
 
   it('does not show navigation for single image', async () => {
-    mockFileToImages.mockResolvedValue(['data:image/png;base64,abc123'])
+    mockFilesToImages.mockResolvedValue(['data:image/png;base64,abc123'])
 
     render(<AnswerKeyImagePreview {...defaultProps} />)
 

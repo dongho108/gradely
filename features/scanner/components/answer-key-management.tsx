@@ -43,7 +43,7 @@ export function AnswerKeyManagement() {
     addAnswerKey({
       id: uuidv4(),
       title: structure.title || '스캔된 정답지',
-      file,
+      files: [file],
       structure,
       createdAt: Date.now(),
     })
@@ -158,7 +158,7 @@ export function AnswerKeyManagement() {
       addAnswerKey({
         id: uuidv4(),
         title: structure.title || file.name,
-        file,
+        files: [file],
         structure,
         createdAt: Date.now(),
       })
@@ -294,7 +294,7 @@ export function AnswerKeyManagement() {
 
       {imagePreviewKey && (
         <AnswerKeyImagePreview
-          file={imagePreviewKey.file}
+          files={imagePreviewKey.files}
           title={imagePreviewKey.title}
           onClose={() => setImagePreviewKey(null)}
         />

@@ -11,8 +11,8 @@ export interface ExamSession {
   answerKeyFile?: {
     name: string;
     size: number;
-    // Runtime file reference (not serializable - undefined for server-loaded sessions)
-    fileRef?: File;
+    // Runtime file references (not serializable - undefined for server-loaded sessions)
+    fileRefs?: File[];
     // Supabase Storage path (used to lazy-download the file when needed)
     storagePath?: string;
   };
@@ -66,7 +66,7 @@ import type { AnswerKeyStructure, StudentExamStructure } from './grading'
 export interface AnswerKeyEntry {
   id: string;
   title: string;
-  file: File;
+  files: File[];
   structure: AnswerKeyStructure;
   createdAt: number;
 }

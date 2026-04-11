@@ -60,3 +60,12 @@ export async function fileToImages(file: File): Promise<string[]> {
 
   throw new Error(`Unsupported file type: ${file.type}`);
 }
+
+/**
+ * Converts multiple Files to a flat array of base64 image strings.
+ * Useful for duplex scans where each page is a separate JPEG file.
+ */
+export async function filesToImages(files: File[]): Promise<string[]> {
+  const results = await Promise.all(files.map(fileToImages));
+  return results.flat();
+}

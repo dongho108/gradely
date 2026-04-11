@@ -4,12 +4,11 @@ import { fileToImages } from './file-utils';
 import { MOCK_ANSWER_STRUCTURE, MOCK_STUDENT_EXAM_STRUCTURE } from './mock-data';
 
 /**
- * Extracts the correct answers AND their coordinates from the Answer Key PDF
+ * Extracts answer structure from pre-converted base64 images.
+ * Use when you already have images from multiple files (e.g. duplex scan).
  */
-export async function extractAnswerStructure(file: File): Promise<AnswerKeyStructure> {
+export async function extractAnswerStructureFromImages(images: string[]): Promise<AnswerKeyStructure> {
   try {
-    const images = await fileToImages(file);
-    
     const { data, error } = await supabase.functions.invoke('extract-answer-structure', {
       body: { images }
     });
@@ -25,12 +24,19 @@ export async function extractAnswerStructure(file: File): Promise<AnswerKeyStruc
 }
 
 /**
- * Extracts ONLY the student's text answers and name from the Exam PDF
+ * Extracts the correct answers AND their coordinates from the Answer Key PDF
  */
-export async function extractExamStructure(file: File): Promise<StudentExamStructure> {
+export async function extractAnswerStructure(file: File): Promise<AnswerKeyStructure> {
+  const images = await fileToImages(file);
+  return extractAnswerStructureFromImages(images);
+}
+
+/**
+ * Extracts exam structure from pre-converted base64 images.
+ * Use when you already have images from multiple files (e.g. duplex scan).
+ */
+export async function extractExamStructureFromImages(images: string[]): Promise<StudentExamStructure> {
   try {
-    const images = await fileToImages(file);
-    
     const { data, error } = await supabase.functions.invoke('extract-exam-structure', {
       body: { images }
     });
@@ -43,6 +49,14 @@ export async function extractExamStructure(file: File): Promise<StudentExamStruc
     console.error('Extract Exam Structure Error:', error);
     return MOCK_STUDENT_EXAM_STRUCTURE;
   }
+}
+
+/**
+ * Extracts ONLY the student's text answers and name from the Exam PDF
+ */
+export async function extractExamStructure(file: File): Promise<StudentExamStructure> {
+  const images = await fileToImages(file);
+  return extractExamStructureFromImages(images);
 }
 
 /**

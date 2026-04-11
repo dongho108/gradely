@@ -2,15 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { fileToImages } from '@/lib/file-utils'
+import { filesToImages } from '@/lib/file-utils'
 
 interface AnswerKeyImagePreviewProps {
-  file: File
+  files: File[]
   title: string
   onClose: () => void
 }
 
-export function AnswerKeyImagePreview({ file, title, onClose }: AnswerKeyImagePreviewProps) {
+export function AnswerKeyImagePreview({ files, title, onClose }: AnswerKeyImagePreviewProps) {
   const [images, setImages] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function AnswerKeyImagePreview({ file, title, onClose }: AnswerKeyImagePr
     setLoading(true)
     setError(null)
 
-    fileToImages(file)
+    filesToImages(files)
       .then((result) => {
         if (!cancelled) {
           setImages(result)
@@ -44,7 +44,7 @@ export function AnswerKeyImagePreview({ file, title, onClose }: AnswerKeyImagePr
     return () => {
       cancelled = true
     }
-  }, [file])
+  }, [files])
 
   const totalPages = images.length
   const hasMultiplePages = totalPages > 1

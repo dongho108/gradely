@@ -15,7 +15,7 @@ function createAnswerKey(id: string, title: string): AnswerKeyEntry {
   return {
     id,
     title,
-    file: createMockFile(`${title}.pdf`),
+    files: [createMockFile(`${title}.pdf`)],
     structure: {
       title,
       answers: { '1': { text: 'A' }, '2': { text: 'B' }, '3': { text: 'C' } },
@@ -247,7 +247,7 @@ describe('addTabFromScan', () => {
       const tab = tabs[0]
 
       expect(tab.answerKeyFile?.name).toBe('수학 기말고사.pdf')
-      expect(tab.answerKeyFile?.fileRef).toBe(mathKey.file)
+      expect(tab.answerKeyFile?.fileRefs).toEqual(mathKey.files)
     })
 
     it('answerKeyStructure에 answers와 totalQuestions가 올바르게 설정됨', () => {

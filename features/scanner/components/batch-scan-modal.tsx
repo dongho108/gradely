@@ -313,6 +313,12 @@ export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModal
                   </div>
                 </div>
               </section>
+              {pageCount > 0 && (
+                <div className="flex items-center gap-2 rounded-md bg-green-50 px-4 py-2.5 text-sm text-green-700">
+                  <FileText className="h-4 w-4" />
+                  <span>{pageCount}개 파일 추가됨</span>
+                </div>
+              )}
             </>
           )}
 
@@ -394,13 +400,42 @@ export function BatchScanModal({ open, onClose, onScanComplete }: BatchScanModal
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={onClose}>
-                취소
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={onClose}>
+                  취소
+                </Button>
+                {!isDevMode && !isUsbMode && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      multiple
+                      onChange={handleDevFileUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      파일로도 추가
+                    </Button>
+                  </>
+                )}
+              </div>
               {isDevMode || isUsbMode ? (
                 <Button
                   onClick={onScanComplete}
                   disabled={!selectedKeyId || answerKeys.length === 0 || pageCount === 0}
+                >
+                  분류 시작 ({pageCount}페이지)
+                </Button>
+              ) : pageCount > 0 ? (
+                <Button
+                  onClick={onScanComplete}
+                  disabled={!selectedKeyId || answerKeys.length === 0}
                 >
                   분류 시작 ({pageCount}페이지)
                 </Button>

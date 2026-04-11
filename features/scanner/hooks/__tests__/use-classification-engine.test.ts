@@ -71,7 +71,7 @@ function makeAnswerKey(id: string, title: string): AnswerKeyEntry {
   return {
     id,
     title,
-    file: makeFile(`${id}.pdf`),
+    files: [makeFile(`${id}.pdf`)],
     structure: { title, answers: {}, totalQuestions: 0 },
     createdAt: Date.now(),
   }
