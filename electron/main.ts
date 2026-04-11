@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, protocol, net, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, shell, protocol, net, ipcMain, dialog, session } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import url from 'url';
@@ -144,7 +144,11 @@ function openInChrome(url: string): Promise<void> {
 app.whenReady().then(async () => {
   // Hot update: UI 번들 업데이트 체크 (프로덕션 전용)
   if (!isDev) {
-    await checkForUIUpdate();
+    const updated = await checkForUIUpdate();
+    if (updated) {
+      await session.defaultSession.clearCache();
+      console.log('[HotUpdate] Session cache cleared after UI update');
+    }
   }
 
   // app:// 프로토콜 핸들러: out/ 디렉토리의 정적 파일 서빙
