@@ -10,7 +10,8 @@ import { ReportIssueModal } from "./report-issue-modal";
 import { SubmissionList } from "./submission-list";
 import { GradingResultPanel } from "./grading-result-panel";
 import { StudentSubmission } from "@/types/grading";
-import { Upload, Sparkles, FileText, ClipboardList, ScanLine } from "lucide-react";
+import { Upload, Sparkles, FileText, ClipboardList, ScanLine, List } from "lucide-react";
+import { AnswerKeyStructurePanel } from "./answer-key-structure-panel";
 import { ScanSettingsPopover } from "@/features/scanner/components/scan-settings-popover";
 import { useScannerAvailability } from "@/features/scanner/hooks/use-scanner-availability";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
   }, [tabId]);
   const [isGrading, setIsGrading] = useState(false);
   const [viewMode, setViewMode] = useState<'pdf' | 'result'>('result');
+  const [answerKeyViewMode, setAnswerKeyViewMode] = useState<'structure' | 'pdf'>('structure');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isAuthenticated, signInWithGoogle } = useAuthStore();
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -391,63 +393,105 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
                 )}
               </div>
 
-              {/* Tab Buttons - 학생 선택 시에만 표시 */}
-              {currentSubmission && (
-                <div className="flex gap-2">
+              {/* Tab Buttons - segmented control style */}
+              {currentSubmission ? (
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('result')}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                      viewMode === 'result'
+                        ? "bg-white text-primary shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    채점 결과
+                  </button>
                   <button
                     onClick={() => setViewMode('pdf')}
                     className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
                       viewMode === 'pdf'
-                        ? "bg-primary text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        ? "bg-white text-primary shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
                     )}
                   >
                     <FileText className="w-4 h-4" />
                     제출한 시험지 보기
                   </button>
+                </div>
+              ) : (
+                <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
-                    onClick={() => setViewMode('result')}
+                    onClick={() => setAnswerKeyViewMode('structure')}
                     className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                      viewMode === 'result'
-                        ? "bg-primary text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                      answerKeyViewMode === 'structure'
+                        ? "bg-white text-primary shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
                     )}
                   >
-                    <ClipboardList className="w-4 h-4" />
-                    채점 결과
+                    <List className="w-4 h-4" />
+                    구조 추출 결과
+                  </button>
+                  <button
+                    onClick={() => setAnswerKeyViewMode('pdf')}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                      answerKeyViewMode === 'pdf'
+                        ? "bg-white text-primary shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    <FileText className="w-4 h-4" />
+                    원본 보기
                   </button>
                 </div>
               )}
             </div>
 
             {/* Content Area - 탭에 따라 전환 */}
-            {currentSubmission && viewMode === 'result' ? (
-              <div className="flex-1 rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
-                <GradingResultPanel
-                  submission={currentSubmission}
-                  onAnswerEdit={handleAnswerEdit}
-                  onCorrectToggle={handleCorrectToggle}
-                  onStudentNameEdit={handleStudentNameEdit}
-                  onReportIssue={
-                    currentSubmission.status === 'graded' && currentSubmission.results
-                      ? () => {
-                          if (!isAuthenticated) {
-                            setShowLoginPrompt(true);
-                            return;
+            {currentSubmission ? (
+              viewMode === 'result' ? (
+                <div className="flex-1 rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
+                  <GradingResultPanel
+                    submission={currentSubmission}
+                    onAnswerEdit={handleAnswerEdit}
+                    onCorrectToggle={handleCorrectToggle}
+                    onStudentNameEdit={handleStudentNameEdit}
+                    onReportIssue={
+                      currentSubmission.status === 'graded' && currentSubmission.results
+                        ? () => {
+                            if (!isAuthenticated) {
+                              setShowLoginPrompt(true);
+                              return;
+                            }
+                            setShowReportModal(true);
                           }
-                          setShowReportModal(true);
-                        }
-                      : undefined
-                  }
-                />
-              </div>
-            ) : (
-              <PDFViewer
-                  file={currentSubmission ? (resolvedSubmissionFiles ?? answerKeyFiles) : answerKeyFiles}
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                <PDFViewer
+                  file={resolvedSubmissionFiles ?? answerKeyFiles}
                   className="flex-1"
-              />
+                />
+              )
+            ) : (
+              answerKeyViewMode === 'structure' ? (
+                <div className="flex-1 rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
+                  <AnswerKeyStructurePanel
+                    structure={useTabStore.getState().tabs.find(t => t.id === tabId)?.answerKeyStructure}
+                  />
+                </div>
+              ) : (
+                <PDFViewer
+                  file={answerKeyFiles}
+                  className="flex-1"
+                />
+              )
             )}
         </div>
       </div>
