@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useScanStore } from '@/store/use-scan-store'
-import { extractExamStructure } from '@/lib/grading-service'
+import { extractExamStructure, extractExamStructureFromImages } from '@/lib/grading-service'
+import { filesToImages } from '@/lib/file-utils'
 import { matchExamTitle, groupPagesByStudent, groupPagesByFixedCount } from '@/lib/scan-utils'
 import type { ScannedPage, ClassifiedStudent } from '@/types'
 
@@ -60,7 +61,12 @@ export function useClassificationEngine(): UseClassificationEngineReturn {
             const page = queue.shift()!
             activeCount++
 
-            extractExamStructure(page.file)
+            // 다중 파일(duplex 등)이면 모든 이미지를 합쳐서 OCR
+            const ocrPromise = page.files && page.files.length > 1
+              ? filesToImages(page.files).then(extractExamStructureFromImages)
+              : extractExamStructure(page.file)
+
+            ocrPromise
               .then((ocrResult) => {
                 updatePageOcrResult(page.id, ocrResult)
               })

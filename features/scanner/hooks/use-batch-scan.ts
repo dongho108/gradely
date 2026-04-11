@@ -43,10 +43,13 @@ export function useBatchScan(): UseBatchScanReturn {
   const addFiles = useCallback(
     (files: File[]) => {
       setLastError(null)
+      const source = useScanStore.getState().scanSettings.source
+      const groupSize = source === 'duplex' ? 2 : 1
       let count = pageCount
-      for (const file of files) {
-        addScannedPage({ id: uuidv4(), file })
-        count += 1
+      for (let i = 0; i < files.length; i += groupSize) {
+        const groupFiles = files.slice(i, i + groupSize)
+        addScannedPage({ id: uuidv4(), file: groupFiles[0], files: groupFiles })
+        count += groupFiles.length
       }
       setPageCount(count)
     },
@@ -77,18 +80,27 @@ export function useBatchScan(): UseBatchScanReturn {
         const { filePath, mimeType, additionalFiles } = await window.electronAPI!.scanner.scan(mergedScanOptions)
         console.log('[Scanner UI] startScan: 스캔 완료, filePath:', filePath, ', additionalFiles:', additionalFiles?.length ?? 0)
 
-        // 모든 출력 파일(기본 + 추가)을 순서대로 처리
-        const allFiles = [filePath, ...(additionalFiles ?? [])]
-        for (const scanFilePath of allFiles) {
+        // 모든 출력 파일(기본 + 추가)을 File 객체로 변환
+        const allFilePaths = [filePath, ...(additionalFiles ?? [])]
+        const scannedFiles: File[] = []
+        for (const scanFilePath of allFilePaths) {
           const base64 = await window.electronAPI!.scanner.readScanFile(scanFilePath)
           const ext = mimeType.split('/')[1] ?? 'jpeg'
-          const file = base64ToFile(base64, `scan-${currentPageCount}.${ext}`, mimeType)
-          addScannedPage({ id: uuidv4(), file })
+          const file = base64ToFile(base64, `scan-${currentPageCount + scannedFiles.length}.${ext}`, mimeType)
           await window.electronAPI!.scanner.cleanupScanFile(scanFilePath)
-          currentPageCount += 1
-          setPageCount(currentPageCount)
-          console.log('[Scanner UI] startScan: 페이지', currentPageCount, '완료')
+          scannedFiles.push(file)
         }
+
+        // Duplex: 2페이지씩 묶어서 하나의 ScannedPage로 등록
+        const groupSize = mergedScanOptions.source === 'duplex' ? 2 : 1
+        for (let i = 0; i < scannedFiles.length; i += groupSize) {
+          const groupFiles = scannedFiles.slice(i, i + groupSize)
+          addScannedPage({ id: uuidv4(), file: groupFiles[0], files: groupFiles })
+        }
+
+        currentPageCount += scannedFiles.length
+        setPageCount(currentPageCount)
+        console.log('[Scanner UI] startScan: 페이지', currentPageCount, '완료')
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const lowerMessage = message.toLowerCase()
@@ -101,7 +113,7 @@ export function useBatchScan(): UseBatchScanReturn {
         ]
         const isNoMorePages = noMorePagesPatterns.some(p => lowerMessage.includes(p))
         // ADF 피더에서 1장 이상 스캔 후 일반 실패 → 용지 소진으로 간주
-        const isFeederExhausted = mergedScanOptions.source === 'feeder'
+        const isFeederExhausted = (mergedScanOptions.source === 'feeder' || mergedScanOptions.source === 'duplex')
           && currentPageCount > 0
           && lowerMessage.includes('command failed')
 
@@ -150,18 +162,29 @@ export function useBatchScan(): UseBatchScanReturn {
     setLastError(null)
     try {
       const result = await importFn()
-      const files = result.files ?? []
+      const importedEntries = result.files ?? []
+      const source = useScanStore.getState().scanSettings.source
+      const groupSize = source === 'duplex' ? 2 : 1
       let count = pageCount
-      for (const { filePath, mimeType } of files) {
+
+      // 먼저 모든 파일을 File 객체로 변환
+      const allFiles: File[] = []
+      for (const { filePath, mimeType } of importedEntries) {
         const base64 = await window.electronAPI!.scanner.readScanFile(filePath)
         const ext = mimeType.split('/')[1] ?? 'jpeg'
-        const file = base64ToFile(base64, `import-${count}.${ext}`, mimeType)
-        addScannedPage({ id: uuidv4(), file })
+        const file = base64ToFile(base64, `import-${count + allFiles.length}.${ext}`, mimeType)
         await window.electronAPI!.scanner.cleanupScanFile(filePath)
-        count += 1
+        allFiles.push(file)
       }
+
+      // Duplex: 2개씩 묶어서 ScannedPage로 등록
+      for (let i = 0; i < allFiles.length; i += groupSize) {
+        const groupFiles = allFiles.slice(i, i + groupSize)
+        addScannedPage({ id: uuidv4(), file: groupFiles[0], files: groupFiles })
+      }
+      count += allFiles.length
       setPageCount(count)
-      return files.length
+      return allFiles.length
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setLastError(message)

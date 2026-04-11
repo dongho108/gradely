@@ -4,16 +4,21 @@ import { useBatchScan } from '../use-batch-scan'
 
 // ─── Hoisted mocks (available in vi.mock factories) ───────────────────────────
 
-const { mockAddScannedPage, mockBase64ToFile } = vi.hoisted(() => ({
+const { mockAddScannedPage, mockBase64ToFile, mockScanSettings } = vi.hoisted(() => ({
   mockAddScannedPage: vi.fn(),
   mockBase64ToFile: vi.fn(),
+  mockScanSettings: { source: 'feeder' as 'glass' | 'feeder' | 'duplex' },
 }))
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
-vi.mock('@/store/use-scan-store', () => ({
-  useScanStore: () => ({ addScannedPage: mockAddScannedPage }),
-}))
+vi.mock('@/store/use-scan-store', () => {
+  const store = Object.assign(
+    () => ({ addScannedPage: mockAddScannedPage }),
+    { getState: () => ({ scanSettings: mockScanSettings }) },
+  )
+  return { useScanStore: store }
+})
 
 vi.mock('@/lib/scan-utils', () => ({
   base64ToFile: mockBase64ToFile,
@@ -50,6 +55,9 @@ beforeEach(() => {
   mockBase64ToFile.mockImplementation(
     (base64: string, name: string, mime: string) => new File([base64], name, { type: mime }),
   )
+
+  // Reset scan settings to default
+  mockScanSettings.source = 'feeder'
 
   // Default: readScanFile returns a base64 string
   mockReadScanFile.mockResolvedValue('base64data')
@@ -171,6 +179,7 @@ describe('useBatchScan', () => {
       expect(mockAddScannedPage).toHaveBeenCalledWith({
         id: 'test-uuid',
         file: fakeFile,
+        files: [fakeFile],
       })
     })
 
@@ -490,6 +499,117 @@ describe('useBatchScan', () => {
       expect(mockScan).toHaveBeenCalledWith(
         expect.objectContaining({ format: 'png', source: 'glass' }),
       )
+    })
+  })
+
+  // ── Duplex 그룹핑 ──────────────────────────────────────────────────────────
+
+  describe('duplex 양면스캔 그룹핑', () => {
+    it('duplex 스캔 시 2페이지가 하나의 ScannedPage로 묶임', async () => {
+      // ADF duplex: 1회 scan 호출에 filePath + additionalFiles[0] 반환
+      let callCount = 0
+      mockScan.mockImplementation(async () => {
+        callCount++
+        if (callCount > 1) throw new Error('no-more-pages')
+        return {
+          filePath: '/tmp/scan-front.jpg',
+          mimeType: 'image/jpeg',
+          additionalFiles: ['/tmp/scan-back.jpg'],
+        }
+      })
+
+      const frontFile = new File(['front'], 'scan-0.jpeg', { type: 'image/jpeg' })
+      const backFile = new File(['back'], 'scan-1.jpeg', { type: 'image/jpeg' })
+      mockBase64ToFile
+        .mockReturnValueOnce(frontFile)
+        .mockReturnValueOnce(backFile)
+
+      const { result } = renderHook(() => useBatchScan())
+      await act(async () => {
+        await result.current.startScan({ scanOptions: { source: 'duplex' } })
+      })
+
+      // 2페이지가 1개의 ScannedPage로 묶여야 함
+      expect(mockAddScannedPage).toHaveBeenCalledTimes(1)
+      expect(mockAddScannedPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file: frontFile,
+          files: [frontFile, backFile],
+        }),
+      )
+      expect(result.current.pageCount).toBe(2)
+    })
+
+    it('feeder 스캔 시 additionalFiles가 있어도 각각 별도 ScannedPage로 등록', async () => {
+      let callCount = 0
+      mockScan.mockImplementation(async () => {
+        callCount++
+        if (callCount > 1) throw new Error('no-more-pages')
+        return {
+          filePath: '/tmp/scan-1.jpg',
+          mimeType: 'image/jpeg',
+          additionalFiles: ['/tmp/scan-2.jpg'],
+        }
+      })
+
+      const file1 = new File(['p1'], 'scan-0.jpeg', { type: 'image/jpeg' })
+      const file2 = new File(['p2'], 'scan-1.jpeg', { type: 'image/jpeg' })
+      mockBase64ToFile
+        .mockReturnValueOnce(file1)
+        .mockReturnValueOnce(file2)
+
+      const { result } = renderHook(() => useBatchScan())
+      await act(async () => {
+        await result.current.startScan({ scanOptions: { source: 'feeder' } })
+      })
+
+      // feeder이므로 각각 별도 ScannedPage
+      expect(mockAddScannedPage).toHaveBeenCalledTimes(2)
+      expect(mockAddScannedPage).toHaveBeenNthCalledWith(1,
+        expect.objectContaining({ file: file1, files: [file1] }),
+      )
+      expect(mockAddScannedPage).toHaveBeenNthCalledWith(2,
+        expect.objectContaining({ file: file2, files: [file2] }),
+      )
+    })
+
+    it('addFiles: duplex 설정이면 2개씩 묶음', () => {
+      mockScanSettings.source = 'duplex'
+      const files = [
+        new File(['a'], 'a.jpg', { type: 'image/jpeg' }),
+        new File(['b'], 'b.jpg', { type: 'image/jpeg' }),
+        new File(['c'], 'c.jpg', { type: 'image/jpeg' }),
+        new File(['d'], 'd.jpg', { type: 'image/jpeg' }),
+      ]
+
+      const { result } = renderHook(() => useBatchScan())
+      act(() => {
+        result.current.addFiles(files)
+      })
+
+      // 4파일 → duplex → 2개의 ScannedPage
+      expect(mockAddScannedPage).toHaveBeenCalledTimes(2)
+      expect(mockAddScannedPage).toHaveBeenNthCalledWith(1,
+        expect.objectContaining({ file: files[0], files: [files[0], files[1]] }),
+      )
+      expect(mockAddScannedPage).toHaveBeenNthCalledWith(2,
+        expect.objectContaining({ file: files[2], files: [files[2], files[3]] }),
+      )
+    })
+
+    it('addFiles: feeder 설정이면 각각 별도', () => {
+      mockScanSettings.source = 'feeder'
+      const files = [
+        new File(['a'], 'a.jpg', { type: 'image/jpeg' }),
+        new File(['b'], 'b.jpg', { type: 'image/jpeg' }),
+      ]
+
+      const { result } = renderHook(() => useBatchScan())
+      act(() => {
+        result.current.addFiles(files)
+      })
+
+      expect(mockAddScannedPage).toHaveBeenCalledTimes(2)
     })
   })
 })

@@ -47,22 +47,28 @@ export function useTabScan(tabId: string): UseTabScanReturn {
       try {
         const { filePath, mimeType, additionalFiles } = await window.electronAPI!.scanner.scan(mergedScanOptions)
 
-        // 모든 출력 파일(기본 + ADF 추가 페이지) 처리
-        const allFiles = [filePath, ...(additionalFiles ?? [])]
-        for (const scanFilePath of allFiles) {
+        // 모든 출력 파일(기본 + ADF 추가 페이지)을 File 객체로 변환
+        const allFilePaths = [filePath, ...(additionalFiles ?? [])]
+        const scannedFiles: File[] = []
+        for (const scanFilePath of allFilePaths) {
           const base64 = await window.electronAPI!.scanner.readScanFile(scanFilePath)
           const ext = mimeType.split('/')[1] ?? 'jpeg'
-          const file = base64ToFile(base64, `student-scan-${currentPageCount}.${ext}`, mimeType)
-
-          const submissionId = Math.random().toString(36).substring(2, 9)
-          useTabStore.getState().addSubmission(tabId, file, submissionId)
-          useTabStore.getState().setSubmissionStatus(tabId, submissionId, 'queued')
-
+          const file = base64ToFile(base64, `student-scan-${currentPageCount + scannedFiles.length}.${ext}`, mimeType)
           await window.electronAPI!.scanner.cleanupScanFile(scanFilePath)
-
-          currentPageCount += 1
-          setPageCount(currentPageCount)
+          scannedFiles.push(file)
         }
+
+        // Duplex: 2페이지씩 묶어서 하나의 submission으로 등록
+        const groupSize = mergedScanOptions.source === 'duplex' ? 2 : 1
+        for (let i = 0; i < scannedFiles.length; i += groupSize) {
+          const groupFiles = scannedFiles.slice(i, i + groupSize)
+          const submissionId = Math.random().toString(36).substring(2, 9)
+          useTabStore.getState().addSubmission(tabId, groupFiles, submissionId)
+          useTabStore.getState().setSubmissionStatus(tabId, submissionId, 'queued')
+        }
+
+        currentPageCount += scannedFiles.length
+        setPageCount(currentPageCount)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const lowerMessage = message.toLowerCase()
@@ -73,7 +79,7 @@ export function useTabScan(tabId: string): UseTabScanReturn {
           'nomedia', 'no scanned pages',
         ]
         const isNoMorePages = noMorePagesPatterns.some(p => lowerMessage.includes(p))
-        const isFeederExhausted = mergedScanOptions.source === 'feeder'
+        const isFeederExhausted = (mergedScanOptions.source === 'feeder' || mergedScanOptions.source === 'duplex')
           && currentPageCount > 0
           && lowerMessage.includes('command failed')
 

@@ -49,7 +49,7 @@ interface TabState {
   setAnswerKeyStructure: (id: string, structure: AnswerKeyStructure) => void;
   
   // Submission Actions
-  addSubmission: (tabId: string, file: File, id?: string) => void;
+  addSubmission: (tabId: string, file: File | File[], id?: string) => void;
   updateSubmissionGrade: (tabId: string, submissionId: string, result: GradingResult) => void;
   setSubmissionStatus: (tabId: string, submissionId: string, status: StudentSubmission['status']) => void;
   removeSubmission: (tabId: string, submissionId: string) => void;
@@ -135,11 +135,14 @@ export const useTabStore = create<TabState>((set, get) => ({
     })),
 
   addSubmission: (tabId, file, id) => {
+    const files = Array.isArray(file) ? file : [file];
+    if (files.length === 0) return;
+    const firstFile = files[0];
     const newSubmission: StudentSubmission = {
       id: id || generateId(),
-      studentName: file.name.replace('.pdf', '').replace(/_/g, ' '),
-      fileName: file.name,
-      fileRefs: [file],
+      studentName: firstFile.name.replace('.pdf', '').replace(/_/g, ' '),
+      fileName: firstFile.name,
+      fileRefs: files,
       status: 'pending' as const,
       uploadedAt: Date.now(),
     };
@@ -247,7 +250,7 @@ export const useTabStore = create<TabState>((set, get) => ({
           id: generateId(),
           studentName: student.name,
           fileName: student.pages[0]?.file.name ?? `${student.name}.pdf`,
-          fileRefs: student.pages.map(p => p.file),
+          fileRefs: student.pages.flatMap(p => p.files ?? [p.file]),
           status: 'queued' as const,
           uploadedAt: Date.now(),
           preExtractedStructure: mergedStructure,

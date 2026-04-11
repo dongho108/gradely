@@ -83,6 +83,8 @@ export interface ScanSession {
 export interface ScannedPage {
   id: string;
   file: File;
+  /** Duplex 등 다중 페이지일 때 전체 파일 배열. 없으면 [file]로 취급. */
+  files?: File[];
   ocrResult?: StudentExamStructure;
   matchedAnswerKey?: string;
 }
