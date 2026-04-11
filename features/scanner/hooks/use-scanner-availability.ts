@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
+import { useScannerStore } from '@/store/use-scanner-store'
 import type { ScannerAvailability, ScannerDevice } from '@/types'
 
 interface UseScannerAvailabilityReturn {
@@ -10,101 +11,18 @@ interface UseScannerAvailabilityReturn {
   refreshDevices: () => void
 }
 
-const isDev = process.env.NODE_ENV === 'development'
-
 export function useScannerAvailability(): UseScannerAvailabilityReturn {
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
-  const [available, setAvailable] = useState(isDev) // dev 모드에서는 기본 true
-  const [reason, setReason] = useState<ScannerAvailability['reason']>()
-  const [devices, setDevices] = useState<ScannerDevice[]>([])
-  const [isRefreshing, setIsRefreshing] = useState(false)
-
-  const fetchDevices = useCallback(async () => {
-    if (isDev && !isElectron) {
-      console.log('[Scanner UI] fetchDevices: Dev 모드 → 가짜 디바이스')
-      setDevices([{ name: 'Dev Scanner', driver: 'twain' }])
-      return
-    }
-    if (!isElectron) return
-
-    setIsRefreshing(true)
-    try {
-      console.log('[Scanner UI] fetchDevices: IPC 호출 시작')
-      const result = await window.electronAPI!.scanner.listDevices()
-      console.log('[Scanner UI] fetchDevices: IPC 결과:', JSON.stringify(result))
-
-      // 권한 에러 처리
-      if (result.error?.type === 'permission') {
-        console.warn('[Scanner UI] fetchDevices: 권한 에러:', result.error.message)
-        setAvailable(false)
-        setReason('permission-denied')
-        setDevices([])
-        return
-      }
-
-      const mapped: ScannerDevice[] = (result.devices ?? []).map(d => ({
-        name: d.name,
-        driver: d.driver as ScannerDevice['driver'],
-        ...(d.driveLetter && { driveLetter: d.driveLetter }),
-        ...(d.onTouchLitePath && { onTouchLitePath: d.onTouchLitePath }),
-        ...(d.hasImageFiles !== undefined && { hasImageFiles: d.hasImageFiles }),
-      }))
-      setDevices(mapped)
-      if (mapped.length === 0) {
-        console.log('[Scanner UI] fetchDevices: 디바이스 없음')
-        setAvailable(false)
-        setReason('no-device-found')
-      } else {
-        console.log('[Scanner UI] fetchDevices: 디바이스 발견:', mapped.length, '개')
-        setAvailable(true)
-        setReason(undefined)
-      }
-    } catch (err) {
-      console.error('[Scanner UI] fetchDevices: 에러:', err)
-      setDevices([])
-    } finally {
-      setIsRefreshing(false)
-    }
-  }, [isElectron])
-
-  const checkAvailability = useCallback(async () => {
-    console.log('[Scanner UI] checkAvailability: isElectron =', isElectron, ', isDev =', isDev)
-    if (isDev && !isElectron) {
-      console.log('[Scanner UI] checkAvailability: Dev 모드 → 항상 available')
-      setAvailable(true)
-      fetchDevices()
-      return
-    }
-    if (!isElectron) return
-    try {
-      console.log('[Scanner UI] checkAvailability: IPC 호출 시작')
-      const result = await window.electronAPI!.scanner.checkAvailability()
-      console.log('[Scanner UI] checkAvailability: 결과:', JSON.stringify(result))
-      // NAPS2 유무와 관계없이 항상 디바이스 조회 (USB 스캐너 감지를 위해)
-      await fetchDevices()
-      if (!result.available) {
-        console.warn('[Scanner UI] checkAvailability: NAPS2 사용 불가, reason:', result.reason)
-        // fetchDevices에서 USB 디바이스를 찾았을 수 있으므로 available 상태는 fetchDevices가 관리
-      }
-    } catch (err) {
-      console.error('[Scanner UI] checkAvailability: 에러:', err)
-      setAvailable(false)
-      setDevices([])
-    }
-  }, [isElectron, fetchDevices])
-
-  const refreshDevices = useCallback(() => {
-    checkAvailability()
-  }, [checkAvailability])
+  const available = useScannerStore(s => s.available)
+  const reason = useScannerStore(s => s.reason)
+  const isElectron = useScannerStore(s => s.isElectron)
+  const devices = useScannerStore(s => s.devices)
+  const isRefreshing = useScannerStore(s => s.isRefreshing)
+  const refreshDevices = useScannerStore(s => s.refreshDevices)
+  const initialize = useScannerStore(s => s.initialize)
 
   useEffect(() => {
-    checkAvailability()
+    initialize()
+  }, [initialize])
 
-    if (!isElectron && !isDev) return
-
-    const interval = setInterval(checkAvailability, 30_000)
-    return () => clearInterval(interval)
-  }, [checkAvailability, isElectron])
-
-  return { available, reason, isElectron: isElectron || isDev, devices, isRefreshing, refreshDevices }
+  return { available, reason, isElectron, devices, isRefreshing, refreshDevices }
 }

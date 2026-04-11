@@ -6,6 +6,7 @@ import { UploadAnswerKey } from "@/features/grader/components/upload-answer-key"
 import { GradingWorkspace } from "@/features/grader/components/grading-workspace";
 import { AnswerKeyScanPanel } from "@/features/scanner/components/answer-key-scan-panel";
 import { useTabStore, StoreExamSession } from "@/store/use-tab-store";
+import { useScannerStore } from "@/store/use-scanner-store";
 import { useInitialData } from "@/hooks/use-initial-data";
 import { useAuthInit } from "@/hooks/use-auth-init";
 import { useSessionSync } from "@/hooks/use-session-sync";
@@ -75,6 +76,11 @@ function useAnswerKeyFile(activeTab: StoreExamSession | undefined) {
   };
 
   return { file, isLoading, error, retry };
+}
+
+// 앱 시작 시 스캐너 가용성 조기 초기화 (버튼 지연 방지)
+if (typeof window !== 'undefined') {
+  useScannerStore.getState().initialize();
 }
 
 export default function Home() {

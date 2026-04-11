@@ -37,9 +37,17 @@ declare global {
 }
 
 /**
- * Electron 환경인지 감지
+ * Electron 환경인지 감지 (결과를 캐싱하여 한 번만 판별)
  */
+let _cached: boolean | null = null;
+
 export function isElectron(): boolean {
-  if (typeof window === 'undefined') return false;
-  return !!window.electronAPI;
+  if (_cached !== null) return _cached;
+  _cached = typeof window !== 'undefined' && !!window.electronAPI;
+  return _cached;
+}
+
+/** 테스트용: 캐시 초기화 */
+export function _resetIsElectronCache(): void {
+  _cached = null;
 }
