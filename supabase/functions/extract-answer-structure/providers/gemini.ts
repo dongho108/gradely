@@ -40,7 +40,7 @@ export class GeminiProvider {
         maxOutputTokens: 4096,
         responseMimeType: 'application/json',
         thinkingConfig: {
-          thinkingBudget: 1024
+          thinkingBudget: 0
         }
       }
     };
