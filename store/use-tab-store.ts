@@ -64,6 +64,9 @@ interface TabState {
   addTabFromScan: (params: { students: ClassifiedStudent[]; answerKeys: AnswerKeyEntry[] }) => number;
   addTabFromAnswerKey: (answerKey: { title: string; files: File[]; structure: import('@/types/grading').AnswerKeyStructure }) => string;
 
+  // Restore Action
+  restoreSession: (session: StoreExamSession, submissions: StudentSubmission[]) => void;
+
   // Persistence Actions
   hydrateFromServer: (sessions: StoreExamSession[], submissions: Record<string, StudentSubmission[]>) => void;
 }
@@ -298,6 +301,24 @@ export const useTabStore = create<TabState>((set, get) => ({
     }));
 
     return tabId;
+  },
+
+  restoreSession: (session, submissions) => {
+    set((state) => {
+      // Already open — just activate
+      const existing = state.tabs.find((t) => t.id === session.id);
+      if (existing) {
+        return { activeTabId: session.id };
+      }
+      return {
+        tabs: [...state.tabs, session],
+        activeTabId: session.id,
+        submissions: {
+          ...state.submissions,
+          [session.id]: submissions,
+        },
+      };
+    });
   },
 
   hydrateFromServer: (sessions, submissions) => {
