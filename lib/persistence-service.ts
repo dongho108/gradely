@@ -13,6 +13,7 @@ export interface PersistedExamSession {
   answer_key_file_size: number | null;
   answer_key_storage_path: string | null;
   answer_key_structure: AnswerKeyStructure | null;
+  archived_at: string | null;
   updated_at: string;
 }
 
@@ -39,6 +40,7 @@ export async function loadUserSessions(userId: string): Promise<PersistedExamSes
     .from('exam_sessions')
     .select('*')
     .eq('user_id', userId)
+    .is('archived_at', null)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as PersistedExamSession[];
@@ -84,4 +86,33 @@ export async function deleteSubmission(submissionId: string): Promise<void> {
     .delete()
     .eq('id', submissionId);
   if (error) throw error;
+}
+
+// --- Archive / Restore ---
+
+export async function archiveSession(sessionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('exam_sessions')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', sessionId);
+  if (error) throw error;
+}
+
+export async function restoreSession(sessionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('exam_sessions')
+    .update({ archived_at: null })
+    .eq('id', sessionId);
+  if (error) throw error;
+}
+
+export async function loadArchivedSessions(userId: string): Promise<PersistedExamSession[]> {
+  const { data, error } = await supabase
+    .from('exam_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as PersistedExamSession[];
 }

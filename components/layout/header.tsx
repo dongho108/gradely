@@ -2,15 +2,15 @@
 
 import { useTabStore } from "@/store/use-tab-store";
 import { cn } from "@/lib/utils";
-import { Plus, X, LogOut, Download, RefreshCw, RotateCw } from "lucide-react";
+import { Plus, X, LogOut, Download, RefreshCw, RotateCw, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { isElectron } from "@/lib/is-electron";
 import { useAuthStore } from "@/store/use-auth-store";
 import { GoogleLoginButton } from "@/components/auth/google-login-button";
 import { ScannerStatusIndicator } from "@/features/scanner/components/scanner-status-indicator";
-import { deleteSession as deleteSessionFromDB } from "@/lib/persistence-service";
-import { deleteSessionFiles } from "@/lib/storage-service";
+import { archiveSession } from "@/lib/persistence-service";
+import { SessionHistoryModal } from "./session-history-modal";
 
 export function Header() {
   const { tabs, activeTabId, addTab, setActiveTab, removeTab, updateTabTitle } = useTabStore();
@@ -23,6 +23,7 @@ export function Header() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'available' | 'downloading' | 'ready'>('idle');
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize with one tab if empty on mount (Client-side only)
@@ -113,6 +114,7 @@ export function Header() {
   };
 
   return (
+    <>
     <header className="flex h-12 items-center border-b border-gray-200 bg-white px-2 shadow-sm shrink-0">
       {/* Brand Icon or Logo Area */}
       <div className="mr-4 flex items-center gap-3 px-2 text-primary font-bold shrink-0">
@@ -164,16 +166,17 @@ export function Header() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                removeTab(tab.id);
-                // Delete from server (non-blocking)
                 const userId = useAuthStore.getState().user?.id;
                 if (userId) {
-                  deleteSessionFromDB(tab.id).catch((err) =>
-                    console.error('[Header] Failed to delete session from DB:', err)
-                  );
-                  deleteSessionFiles(userId, tab.id).catch((err) =>
-                    console.error('[Header] Failed to delete session files:', err)
-                  );
+                  // Archive first, then remove tab on success
+                  archiveSession(tab.id)
+                    .then(() => removeTab(tab.id))
+                    .catch((err) =>
+                      console.error('[Header] Failed to archive session:', err)
+                    );
+                } else {
+                  // Not authenticated — just remove from UI
+                  removeTab(tab.id);
                 }
               }}
               className={cn(
@@ -200,6 +203,15 @@ export function Header() {
             aria-label="새 시험"
           >
             <Plus className="h-5 w-5" />
+          </button>
+        )}
+        {isAuthenticated && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-primary transition-colors mb-1 shrink-0"
+            aria-label="세션 히스토리"
+          >
+            <History className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -287,5 +299,7 @@ export function Header() {
         )}
       </div>
     </header>
+    {showHistory && <SessionHistoryModal onClose={() => setShowHistory(false)} />}
+    </>
   );
 }
