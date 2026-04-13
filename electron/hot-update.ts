@@ -167,6 +167,21 @@ export function getOutDir(): string {
 }
 
 /**
+ * Return the short hash (first 8 chars) of the locally cached UI version.
+ * Returns "bundled" if no cached version exists.
+ */
+export function getLocalVersion(): string {
+  try {
+    const versionFile = getVersionFile();
+    if (!fs.existsSync(versionFile)) return 'bundled';
+    const local = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
+    return typeof local.version === 'string' ? local.version.slice(0, 8) : 'bundled';
+  } catch {
+    return 'bundled';
+  }
+}
+
+/**
  * Top-level update check. Safe to call at startup — never throws.
  */
 export async function checkForUIUpdate(): Promise<boolean> {

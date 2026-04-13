@@ -5,7 +5,7 @@ import url from 'url';
 import { exec } from 'child_process';
 import { ScannerService } from './scanner-service';
 import { createAuthCallbackServer } from './auth-server';
-import { checkForUIUpdate, getOutDir } from './hot-update';
+import { checkForUIUpdate, getOutDir, getLocalVersion } from './hot-update';
 
 const scannerService = new ScannerService();
 
@@ -149,6 +149,9 @@ app.whenReady().then(async () => {
       await session.defaultSession.clearCache();
       console.log('[HotUpdate] Session cache cleared after UI update');
     }
+    console.log(`[HotUpdate] Current UI version: ${getLocalVersion()}`);
+  } else {
+    console.log('[HotUpdate] UI version: dev (skipped)');
   }
 
   // app:// 프로토콜 핸들러: out/ 디렉토리의 정적 파일 서빙
@@ -177,6 +180,9 @@ app.whenReady().then(async () => {
 
     return net.fetch(url.pathToFileURL(fullPath).toString());
   });
+
+  // IPC: 앱 버전 조회
+  ipcMain.handle('get-app-version', () => app.getVersion());
 
   // IPC: renderer에서 시스템 브라우저 열기
   ipcMain.handle('open-external', (_event, url: string) => {

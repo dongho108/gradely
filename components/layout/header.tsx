@@ -22,6 +22,7 @@ export function Header() {
   const [editValue, setEditValue] = useState("");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'available' | 'downloading' | 'ready'>('idle');
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize with one tab if empty on mount (Client-side only)
@@ -30,6 +31,13 @@ export function Header() {
       addTab();
     }
   }, [tabs.length, addTab]);
+
+  // Desktop: 앱 버전 조회
+  useEffect(() => {
+    if (isElectron() && window.electronAPI?.appVersion) {
+      window.electronAPI.appVersion().then((v: string) => setAppVersion(v));
+    }
+  }, []);
 
   // Desktop: electron-updater 이벤트 수신
   useEffect(() => {
@@ -274,7 +282,10 @@ export function Header() {
             </button>
           </div>
         )}
-      </div> 
+        {appVersion && (
+          <span className="text-[10px] text-gray-400 select-none">v{appVersion}</span>
+        )}
+      </div>
     </header>
   );
 }
