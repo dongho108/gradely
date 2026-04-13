@@ -159,4 +159,59 @@ describe('오류 제보 모달 렌더 조건', () => {
 
     expect(result).toBeNull()
   })
+
+  it('isAuthenticated=true이지만 user=null이면 모달이 열리지 않아야 한다 (Electron race condition 방어)', () => {
+    useTabStore.setState({
+      tabs: [
+        {
+          id: 'tab-5',
+          title: '테스트',
+          createdAt: Date.now(),
+          status: 'ready',
+          answerKeyFile: { name: 'answer.pdf', size: 1000 },
+          answerKeyStructure: mockStructure,
+        },
+      ],
+    })
+
+    // isAuthenticated=true이지만 user가 아직 null인 상태 시뮬레이션
+    // (Electron 딥링크 OAuth에서 onAuthStateChange 반영 전 갭)
+    const result = resolveReportModal({
+      showReportModal: true,
+      currentSubmission: { id: 'sub-1', studentName: '학생1' },
+      user: null, // race condition: isAuthenticated는 true이나 user는 아직 null
+      tabId: 'tab-5',
+    })
+
+    expect(result).toBeNull()
+  })
+
+  it('isAuthenticated=true이고 user가 있으면 모달이 정상적으로 열려야 한다', () => {
+    useTabStore.setState({
+      tabs: [
+        {
+          id: 'tab-6',
+          title: '테스트',
+          createdAt: Date.now(),
+          status: 'ready',
+          answerKeyFile: {
+            name: 'answer.pdf',
+            size: 1000,
+            storagePath: 'users/u1/sessions/tab-6/answer-key.pdf',
+          },
+          answerKeyStructure: mockStructure,
+        },
+      ],
+    })
+
+    const result = resolveReportModal({
+      showReportModal: true,
+      currentSubmission: { id: 'sub-1', studentName: '학생1' },
+      user: { id: 'user-1' },
+      tabId: 'tab-6',
+    })
+
+    expect(result).not.toBeNull()
+    expect(result!.answerKeyStructure).toEqual(mockStructure)
+  })
 })

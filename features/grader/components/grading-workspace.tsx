@@ -46,7 +46,8 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
   const [viewMode, setViewMode] = useState<'pdf' | 'result'>('result');
   const [answerKeyViewMode, setAnswerKeyViewMode] = useState<'structure' | 'pdf'>('structure');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isAuthenticated, signInWithGoogle } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showScanPopover, setShowScanPopover] = useState(false);
@@ -506,22 +507,41 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
         />
       )}
 
-      {showReportModal && currentSubmission && user && (() => {
-        const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
-        const answerKeyStructure = currentTab?.answerKeyStructure;
-        if (!answerKeyStructure) return null;
-        const answerKeyStoragePath = currentTab?.answerKeyFile?.storagePath ?? '';
-        return (
-          <ReportIssueModal
-            submission={currentSubmission}
-            sessionId={tabId}
-            userId={user.id}
-            answerKeyStructure={answerKeyStructure}
-            answerKeyStoragePath={answerKeyStoragePath}
-            onClose={() => setShowReportModal(false)}
-          />
-        );
-      })()}
+      {showReportModal && currentSubmission && user && (
+        <ReportIssueModalWrapper
+          tabId={tabId}
+          submission={currentSubmission}
+          userId={user.id}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function ReportIssueModalWrapper({
+  tabId,
+  submission,
+  userId,
+  onClose,
+}: {
+  tabId: string;
+  submission: StudentSubmission;
+  userId: string;
+  onClose: () => void;
+}) {
+  const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
+  const answerKeyStructure = currentTab?.answerKeyStructure;
+  if (!answerKeyStructure) return null;
+  const answerKeyStoragePath = currentTab?.answerKeyFile?.storagePath ?? '';
+  return (
+    <ReportIssueModal
+      submission={submission}
+      sessionId={tabId}
+      userId={userId}
+      answerKeyStructure={answerKeyStructure}
+      answerKeyStoragePath={answerKeyStoragePath}
+      onClose={onClose}
+    />
   );
 }
