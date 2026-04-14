@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StudentSubmission, QuestionResult } from "@/types/grading";
-import { Check, X, ClipboardList, Pencil, Flag } from "lucide-react";
+import { Check, X, ClipboardList, Pencil, Flag, EyeOff, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DiffHighlight } from "./diff-highlight";
 
@@ -20,6 +20,7 @@ export function GradingResultPanel({ submission, className, onAnswerEdit, onCorr
   const [editingName, setEditingName] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [nameEditValue, setNameEditValue] = useState('');
+  const [showWrongOnly, setShowWrongOnly] = useState(false);
 
   // 빈 상태: submission이 null
   if (!submission) {
@@ -163,9 +164,9 @@ export function GradingResultPanel({ submission, className, onAnswerEdit, onCorr
           />
         </div>
 
-        {/* 제보 버튼 */}
-        {onReportIssue && (
-          <div className="flex justify-end mt-2">
+        {/* 제보 버튼 + 틀린 것만 보기 토글 */}
+        <div className="flex items-center justify-between mt-2">
+          {onReportIssue ? (
             <button
               onClick={onReportIssue}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-amber-600 transition-colors"
@@ -174,8 +175,20 @@ export function GradingResultPanel({ submission, className, onAnswerEdit, onCorr
               <Flag className="w-3 h-3" />
               오류 제보
             </button>
-          </div>
-        )}
+          ) : <div />}
+          <button
+            onClick={() => setShowWrongOnly(prev => !prev)}
+            className={cn(
+              "flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-colors",
+              showWrongOnly
+                ? "text-red-600 bg-red-50 border-red-200"
+                : "text-gray-400 border-transparent hover:text-gray-600"
+            )}
+          >
+            {showWrongOnly ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            틀린 것만 보기
+          </button>
+        </div>
       </div>
 
       {/* 문제별 결과 테이블 */}
@@ -201,7 +214,15 @@ export function GradingResultPanel({ submission, className, onAnswerEdit, onCorr
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {results.map((result: QuestionResult) => (
+            {showWrongOnly && results.every(r => r.isCorrect) && (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center">
+                  <Check className="w-10 h-10 text-green-400 mx-auto mb-2" />
+                  <p className="text-green-600 font-medium">모든 문제를 맞혔습니다!</p>
+                </td>
+              </tr>
+            )}
+            {(showWrongOnly ? results.filter(r => !r.isCorrect) : results).map((result: QuestionResult) => (
               <tr
                 key={result.questionNumber}
                 className={cn(
