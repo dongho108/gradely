@@ -20,6 +20,7 @@ interface ElectronAPI {
     importFromFolder: () => Promise<{ files: Array<{ filePath: string; mimeType: string }> }>;
     importFromDrive: (driveLetter: string) => Promise<{ files: Array<{ filePath: string; mimeType: string }> }>;
   };
+  appVersion: () => Promise<string>;
   updater: {
     checkForUpdate: () => Promise<unknown>;
     downloadUpdate: () => Promise<unknown>;
