@@ -73,6 +73,7 @@ async function saveChanges() {
           answer_key_storage_path: tab.answerKeyFile?.storagePath ?? null,
           answer_key_structure: tab.answerKeyStructure ?? null,
           archived_at: null,
+          deleted_at: null,
         })
       );
     } catch (error) {
