@@ -20,21 +20,46 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
 
   initialize: () => {
-    // Validate session by calling getUser() which verifies with the server.
-    // getSession() only returns cached localStorage data and may return expired tokens.
-    supabase.auth.getUser()
-      .then(({ data: { user }, error }) => {
-        if (error || !user) {
-          console.warn('[Auth] Session expired or invalid, clearing auth state');
+    // Hybrid session validation:
+    // 1. getSession() — check localStorage (no network, works in app:// protocol)
+    // 2. getUser() — server-side token validation with timeout
+    // 3. Fallback to local session if server validation fails (Electron app:// etc.)
+    const validate = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
           set({ user: null, isAuthenticated: false, isLoading: false });
-        } else {
-          set({ user, isAuthenticated: true, isLoading: false });
+          return;
         }
-      })
-      .catch((err) => {
+
+        // Server validation with 5s timeout
+        try {
+          const { data: { user }, error } = await Promise.race([
+            supabase.auth.getUser(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 5000)
+            ),
+          ]);
+
+          if (error || !user) {
+            console.warn('[Auth] Session expired or invalid, clearing auth state');
+            set({ user: null, isAuthenticated: false, isLoading: false });
+          } else {
+            set({ user, isAuthenticated: true, isLoading: false });
+          }
+        } catch {
+          // Server validation failed/timeout — fallback to local session
+          console.warn('[Auth] Server validation failed, using local session');
+          set({ user: session.user, isAuthenticated: true, isLoading: false });
+        }
+      } catch (err) {
         console.error('[Auth] Failed to validate session:', err);
         set({ user: null, isAuthenticated: false, isLoading: false });
-      });
+      }
+    };
+
+    validate();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
