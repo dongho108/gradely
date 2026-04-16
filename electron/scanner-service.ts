@@ -326,8 +326,52 @@ export class ScannerService {
     }
   }
 
+  /**
+   * Windows PnP 장치 목록에서 실제 연결된 스캐너급 장치가 있는지 확인한다.
+   * TWAIN 드라이버 캐시와 달리 전원이 꺼진 장치는 PnP에서 사라진다.
+   * 에러 시 true를 반환하여 NAPS2 결과를 그대로 신뢰한다 (graceful degradation).
+   */
+  private checkUsbScannerPresence(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (process.platform !== 'win32') {
+        return resolve(true);
+      }
+
+      const cmd = 'powershell';
+      const args = [
+        '-NoProfile',
+        '-Command',
+        'Get-PnpDevice -Class Image,Scanner -Status OK -ErrorAction SilentlyContinue | Select-Object -Property FriendlyName | ConvertTo-Json -Compress',
+      ];
+
+      execFile(cmd, args, { timeout: 3000 }, (error, stdout) => {
+        if (error) {
+          console.warn('[Scanner] checkUsbScannerPresence: PowerShell 에러, NAPS2 결과 신뢰:', error.message);
+          return resolve(true);
+        }
+
+        const trimmed = stdout.trim();
+        if (!trimmed || trimmed === '' || trimmed === 'null') {
+          console.log('[Scanner] checkUsbScannerPresence: PnP에 스캐너급 장치 없음');
+          return resolve(false);
+        }
+
+        try {
+          const parsed = JSON.parse(trimmed);
+          // 단일 객체일 수 있고 배열일 수 있음
+          const devices = Array.isArray(parsed) ? parsed : [parsed];
+          console.log('[Scanner] checkUsbScannerPresence: PnP 장치', devices.length, '개 발견:', devices.map((d: { FriendlyName?: string }) => d.FriendlyName));
+          return resolve(devices.length > 0);
+        } catch {
+          console.warn('[Scanner] checkUsbScannerPresence: JSON 파싱 실패, NAPS2 결과 신뢰');
+          return resolve(true);
+        }
+      });
+    });
+  }
+
   private async _listDevicesImpl(): Promise<ListDevicesResult> {
-    const allDevices: ScannerDevice[] = [];
+    const naps2Devices: ScannerDevice[] = [];
     let naps2Error: ListDevicesResult['error'];
 
     // 1. NAPS2 (TWAIN/WIA) 조회
@@ -349,7 +393,7 @@ export class ScannerService {
       if (primaryResult.devices.length > 0) {
         this.lastSuccessfulDriver = primaryDriver;
         this.lastDetectedDevice = primaryResult.devices[0].name;
-        allDevices.push(...primaryResult.devices);
+        naps2Devices.push(...primaryResult.devices);
       } else {
         console.log('[Scanner] listDevices:', primaryDriver, '결과 없음 →', secondaryDriver, 'fallback');
         const secondaryResult = await this.listDevicesByDriver(secondaryDriver);
@@ -361,20 +405,36 @@ export class ScannerService {
         if (secondaryResult.devices.length > 0) {
           this.lastSuccessfulDriver = secondaryDriver;
           this.lastDetectedDevice = secondaryResult.devices[0].name;
-          allDevices.push(...secondaryResult.devices);
+          naps2Devices.push(...secondaryResult.devices);
         } else {
           naps2Error = secondaryResult.error ?? primaryResult.error;
         }
       }
     }
 
-    // 2. USB 드라이브 스캐너 조회
-    try {
-      const usbDevices = await this.detectUsbScanners();
-      allDevices.push(...usbDevices);
-    } catch (err) {
-      console.warn('[Scanner] listDevices: USB 스캐너 감지 실패:', (err as Error).message);
+    // 2. NAPS2가 장치를 찾았으면 PnP 교차 검증 + USB 드라이브 스캐너 병렬 조회
+    const [pnpPresent, usbDevices] = await Promise.all([
+      naps2Devices.length > 0
+        ? this.checkUsbScannerPresence()
+        : Promise.resolve(false),
+      this.detectUsbScanners().catch((err) => {
+        console.warn('[Scanner] listDevices: USB 스캐너 감지 실패:', (err as Error).message);
+        return [] as ScannerDevice[];
+      }),
+    ]);
+
+    const allDevices: ScannerDevice[] = [];
+
+    // NAPS2가 장치를 찾았지만 PnP에 실제 장치가 없으면 캐시된 고스트 → 버림
+    if (naps2Devices.length > 0 && !pnpPresent) {
+      console.log('[Scanner] listDevices: NAPS2 장치 발견했지만 PnP 확인 실패 → 캐시된 고스트로 판단');
+      this.lastSuccessfulDriver = null;
+      this.lastDetectedDevice = null;
+    } else {
+      allDevices.push(...naps2Devices);
     }
+
+    allDevices.push(...usbDevices);
 
     if (allDevices.length > 0) {
       return { devices: allDevices };

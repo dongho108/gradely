@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useScanStore } from '@/store/use-scan-store'
+import { useScannerStore } from '@/store/use-scanner-store'
 import { base64ToFile } from '@/lib/scan-utils'
 import { v4 as uuidv4 } from 'uuid'
 import type { ScanOptions } from '@/types'
@@ -141,6 +142,8 @@ export function useBatchScan(): UseBatchScanReturn {
           } else {
             console.error('[Scanner UI] startScan: 알 수 없는 에러:', message)
             setLastError(message)
+            // 스캐너 연결 해제 가능성 → 상태 갱신
+            useScannerStore.getState().refreshDevices()
           }
           break
         }

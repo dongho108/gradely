@@ -6,6 +6,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['electron/__tests__/**/*.test.ts'],
+    exclude: ['.claude/**', 'node_modules/**'],
   },
   resolve: {
     alias: {

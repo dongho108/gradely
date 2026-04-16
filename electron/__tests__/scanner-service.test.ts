@@ -125,6 +125,11 @@ describe('ScannerService - 단위 테스트', () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Canon DR-C225"}]', '');
+          return {} as any;
+        }
         (callback as Function)(null, 'Canon DR-C225\nEpson ES-50\n', '');
         return {} as any;
       });
@@ -136,16 +141,17 @@ describe('ScannerService - 단위 테스트', () => {
         { name: 'Epson ES-50', driver: 'twain' },
       ]);
       expect(result.error).toBeUndefined();
-      // execFile은 1번만 호출 (TWAIN만)
-      expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
     it('TWAIN에서 빈 배열이면 WIA로 재시도한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
-      let callCount = 0;
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
-        callCount++;
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"WIA Scanner Device"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('twain')) {
           (callback as Function)(null, '\n', '');
@@ -160,13 +166,17 @@ describe('ScannerService - 단위 테스트', () => {
       expect(result.devices).toEqual([
         { name: 'WIA Scanner Device', driver: 'wia' },
       ]);
-      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
     it('WIA 결과의 driver 속성이 wia이다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"My WIA Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('twain')) {
           (callback as Function)(null, '', '');
@@ -223,6 +233,11 @@ describe('ScannerService - 단위 테스트', () => {
 
       // 첫 번째 호출: TWAIN 빈 → WIA 성공
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"WIA Device"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('twain')) {
           (callback as Function)(null, '', '');
@@ -237,6 +252,11 @@ describe('ScannerService - 단위 테스트', () => {
       mockExecFile.mockClear();
       const callOrder: string[] = [];
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"WIA Device"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         const driver = args[args.indexOf('--driver') + 1];
         callOrder.push(driver);
@@ -250,13 +270,17 @@ describe('ScannerService - 단위 테스트', () => {
       await service.listDevices();
 
       expect(callOrder[0]).toBe('wia'); // WIA 먼저 시도
-      expect(mockExecFile).toHaveBeenCalledTimes(1); // WIA 성공이므로 1번만
     });
 
     it('TWAIN 에러(non-permission) 시 WIA로 fallback한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Fallback WIA Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('twain')) {
           (callback as Function)(new Error('TWAIN driver error'), '', 'TWAIN init failed');
@@ -271,20 +295,26 @@ describe('ScannerService - 단위 테스트', () => {
       expect(result.devices).toEqual([
         { name: 'Fallback WIA Scanner', driver: 'wia' },
       ]);
-      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
     it('타임아웃은 5초로 설정된다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       const mockExecFile = vi.mocked(execFile);
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Device"}]', '');
+          return {} as any;
+        }
         (callback as Function)(null, 'Device\n', '');
         return {} as any;
       });
 
       await service.listDevices();
 
-      const opts = mockExecFile.mock.calls[0][2] as Record<string, unknown>;
+      // NAPS2 호출(powershell이 아닌 첫 번째 호출)의 타임아웃 확인
+      const naps2Call = mockExecFile.mock.calls.find(c => c[0] !== 'powershell');
+      const opts = naps2Call![2] as Record<string, unknown>;
       expect(opts.timeout).toBe(5000);
     });
 
@@ -421,6 +451,11 @@ describe('ScannerService - 단위 테스트', () => {
 
       // listDevices에서 WIA로 성공시켜 lastSuccessfulDriver를 wia로 설정
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"WIA Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('--listdevices')) {
           if (args.includes('twain')) {
@@ -457,6 +492,11 @@ describe('ScannerService - 단위 테스트', () => {
 
       let scanCallCount = 0;
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Test Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         // listdevices 호출은 디바이스 반환
         if (args.includes('--listdevices')) {
@@ -535,6 +575,11 @@ describe('ScannerService - 단위 테스트', () => {
       const mockExecFile = vi.mocked(execFile);
 
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Test Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('--listdevices')) {
           (callback as Function)(null, 'Test Scanner\n', '');
@@ -562,6 +607,11 @@ describe('ScannerService - 단위 테스트', () => {
 
       // listDevices에서 WIA로 디바이스 발견
       mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Cached WIA Scanner"}]', '');
+          return {} as any;
+        }
         const args = _args as string[];
         if (args.includes('--listdevices')) {
           if (args.includes('twain')) {
@@ -854,6 +904,16 @@ describe('ScannerService - 단위 테스트', () => {
   });
 
   describe('detectUsbScanners()', () => {
+    const originalPlatform = process.platform;
+
+    beforeEach(() => {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+
     it('Canon ONTOUCHL.exe가 있는 이동식 드라이브를 감지한다', async () => {
       vi.mocked(execFileSync).mockReturnValue(JSON.stringify({
         DeviceID: 'E:',
@@ -968,7 +1028,8 @@ describe('ScannerService - 단위 테스트', () => {
     it('ONTOUCHL.exe가 존재하지 않으면 에러를 throw한다', () => {
       vi.spyOn(fs, 'existsSync').mockReturnValue(false);
 
-      expect(() => service.launchOnTouchLite('E:\\ONTOUCHL.exe')).toThrow('OnTouch Lite not found');
+      // macOS에서는 path.basename('E:\\ONTOUCHL.exe')가 전체 문자열을 반환하므로 POSIX 경로 사용
+      expect(() => service.launchOnTouchLite('/tmp/ONTOUCHL.exe')).toThrow('OnTouch Lite not found');
     });
   });
 
@@ -976,6 +1037,139 @@ describe('ScannerService - 단위 테스트', () => {
     it('잘못된 드라이브 문자면 에러를 throw한다', () => {
       expect(() => service.importFromDrive('invalid')).toThrow('Invalid drive letter');
       expect(() => service.importFromDrive('../hack:')).toThrow('Invalid drive letter');
+    });
+  });
+
+  describe('PnP 교차 검증 (checkUsbScannerPresence)', () => {
+    beforeEach(() => {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    });
+
+    it('NAPS2가 디바이스를 찾고 PnP도 확인되면 디바이스를 반환한다', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Canon LiDE 300"}]', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Canon LiDE 300\n', '');
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices.length).toBeGreaterThan(0);
+      expect(result.devices[0].name).toBe('Canon LiDE 300');
+    });
+
+    it('NAPS2가 디바이스를 찾았지만 PnP에 장치가 없으면 빈 배열을 반환한다 (고스트 제거)', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          // PnP에 스캐너급 장치 없음
+          (callback as Function)(null, '', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Ghost Scanner\n', '');
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([]);
+    });
+
+    it('PnP 체크가 에러나면 NAPS2 결과를 그대로 신뢰한다 (graceful degradation)', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(new Error('PowerShell not found'), '', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Real Scanner\n', '');
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices.length).toBeGreaterThan(0);
+      expect(result.devices[0].name).toBe('Real Scanner');
+    });
+
+    it('PnP가 null을 반환하면 장치 없음으로 판단한다', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, 'null', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Cached Scanner\n', '');
+        return {} as any;
+      });
+
+      const result = await service.listDevices();
+
+      expect(result.devices).toEqual([]);
+    });
+
+    it('고스트 제거 시 lastSuccessfulDriver와 lastDetectedDevice가 초기화된다', async () => {
+      const mockExecFile = vi.mocked(execFile);
+
+      // 1차: 디바이스 발견 + PnP 확인 → 캐시 저장
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Scanner"}]', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Scanner\n', '');
+        return {} as any;
+      });
+      await service.listDevices();
+      expect((service as any).lastSuccessfulDriver).toBe('twain');
+      expect((service as any).lastDetectedDevice).toBe('Scanner');
+
+      // 2차: PnP 없음 → 고스트 제거 + 캐시 초기화
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '', '');
+          return {} as any;
+        }
+        (callback as Function)(null, 'Scanner\n', '');
+        return {} as any;
+      });
+      await service.listDevices();
+      expect((service as any).lastSuccessfulDriver).toBeNull();
+      expect((service as any).lastDetectedDevice).toBeNull();
+    });
+
+    it('NAPS2가 디바이스를 못 찾으면 PnP 체크를 건너뛴다', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      const powershellCalls: string[][] = [];
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          powershellCalls.push(_args as string[]);
+          (callback as Function)(null, '', '');
+          return {} as any;
+        }
+        (callback as Function)(null, '\n', '');
+        return {} as any;
+      });
+
+      await service.listDevices();
+
+      expect(powershellCalls).toEqual([]); // powershell 호출 없어야 함
     });
   });
 });
