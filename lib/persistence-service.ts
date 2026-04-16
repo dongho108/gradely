@@ -63,6 +63,28 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (error) throw error;
 }
 
+// --- Storage Path Lookups ---
+
+export async function getSessionStoragePath(sessionId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('exam_sessions')
+    .select('answer_key_storage_path')
+    .eq('id', sessionId)
+    .single();
+  if (error) return null;
+  return data?.answer_key_storage_path ?? null;
+}
+
+export async function getSubmissionStoragePath(submissionId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('submissions')
+    .select('storage_path')
+    .eq('id', submissionId)
+    .single();
+  if (error) return null;
+  return data?.storage_path ?? null;
+}
+
 // --- Submission CRUD ---
 
 export async function loadSessionSubmissions(sessionId: string): Promise<PersistedSubmission[]> {
