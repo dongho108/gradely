@@ -6,15 +6,13 @@ import { Button } from '@/components/ui/button';
 import { StudentSubmission } from '@/types/grading';
 import { AnswerKeyStructure } from '@/types/grading';
 import { submitGradingReport } from '@/lib/report-service';
-import { uploadAnswerKey } from '@/lib/storage-service';
+import { getSessionStoragePath, getSubmissionStoragePath } from '@/lib/persistence-service';
 
 interface ReportIssueModalProps {
   submission: StudentSubmission;
   sessionId: string;
   userId: string;
   answerKeyStructure: AnswerKeyStructure;
-  answerKeyStoragePath: string;
-  answerKeyFileRefs?: File[];
   onClose: () => void;
 }
 
@@ -23,8 +21,6 @@ export function ReportIssueModal({
   sessionId,
   userId,
   answerKeyStructure,
-  answerKeyStoragePath,
-  answerKeyFileRefs,
   onClose,
 }: ReportIssueModalProps) {
   const [comment, setComment] = useState('');
@@ -45,11 +41,11 @@ export function ReportIssueModal({
     setError(null);
 
     try {
-      // Fallback: storagePath가 없으면 fileRefs로 업로드 시도
-      let finalAnswerKeyPath = answerKeyStoragePath;
-      if (!finalAnswerKeyPath && answerKeyFileRefs?.length) {
-        finalAnswerKeyPath = await uploadAnswerKey(userId, sessionId, answerKeyFileRefs[0]);
-      }
+      // DB에서 storage path 직접 조회, 없으면 예측 경로로 Storage 확인
+      const [answerKeyPath, submissionPath] = await Promise.all([
+        getSessionStoragePath(userId, sessionId),
+        getSubmissionStoragePath(userId, sessionId, submission.id),
+      ]);
 
       await submitGradingReport({
         userId,
@@ -59,8 +55,8 @@ export function ReportIssueModal({
         score: submission.score,
         resultsSnapshot: submission.results,
         answerKeyStructure,
-        answerKeyStoragePath: finalAnswerKeyPath,
-        submissionStoragePath: submission.storagePath || '',
+        answerKeyStoragePath: answerKeyPath || '',
+        submissionStoragePath: submissionPath || '',
         comment: comment.trim() || undefined,
       });
       setSubmitted(true);

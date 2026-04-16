@@ -63,6 +63,61 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (error) throw error;
 }
 
+// --- Storage Path Lookups ---
+
+export async function getSessionStoragePath(userId: string, sessionId: string): Promise<string | null> {
+  // 1. DB에서 먼저 조회
+  const { data } = await supabase
+    .from('exam_sessions')
+    .select('answer_key_storage_path')
+    .eq('id', sessionId)
+    .single();
+  if (data?.answer_key_storage_path) return data.answer_key_storage_path;
+
+  // 2. DB에 없으면 예측 경로로 Storage에 파일 존재 여부 확인
+  const expectedPath = `${userId}/${sessionId}/answer-key.pdf`;
+  const { data: signedUrl } = await supabase.storage
+    .from('exam-files')
+    .createSignedUrl(expectedPath, 60);
+  if (signedUrl) {
+    // 파일이 존재하면 DB도 업데이트
+    await supabase
+      .from('exam_sessions')
+      .update({ answer_key_storage_path: expectedPath })
+      .eq('id', sessionId);
+    return expectedPath;
+  }
+
+  return null;
+}
+
+export async function getSubmissionStoragePath(userId: string, sessionId: string, submissionId: string): Promise<string | null> {
+  // 1. DB에서 먼저 조회
+  const { data } = await supabase
+    .from('submissions')
+    .select('storage_path, file_name')
+    .eq('id', submissionId)
+    .single();
+  if (data?.storage_path) return data.storage_path;
+
+  // 2. DB에 없으면 예측 경로로 Storage에 파일 존재 여부 확인
+  const ext = data?.file_name?.endsWith('.pdf') ? 'pdf' : 'pdf';
+  const expectedPath = `${userId}/${sessionId}/submissions/${submissionId}.${ext}`;
+  const { data: signedUrl } = await supabase.storage
+    .from('exam-files')
+    .createSignedUrl(expectedPath, 60);
+  if (signedUrl) {
+    // 파일이 존재하면 DB도 업데이트
+    await supabase
+      .from('submissions')
+      .update({ storage_path: expectedPath })
+      .eq('id', submissionId);
+    return expectedPath;
+  }
+
+  return null;
+}
+
 // --- Submission CRUD ---
 
 export async function loadSessionSubmissions(sessionId: string): Promise<PersistedSubmission[]> {

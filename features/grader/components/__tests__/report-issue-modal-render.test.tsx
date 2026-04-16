@@ -1,17 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { useTabStore } from '@/store/use-tab-store'
-import { useAuthStore } from '@/store/use-auth-store'
-import type { AnswerKeyStructure, QuestionResult, StudentSubmission } from '@/types/grading'
+import type { AnswerKeyStructure, StudentSubmission } from '@/types/grading'
 
 /**
  * ReportIssueModal이 열리는 조건을 검증하는 테스트.
  *
  * GradingWorkspace 전체를 렌더하면 의존성이 너무 많으므로,
  * 모달 렌더 IIFE와 동일한 조건 로직을 직접 테스트한다.
- *
- * 버그 배경: answerKeyFile.storagePath가 없으면 모달이 null을
- * 반환하여 버튼을 눌러도 아무 반응이 없었음.
  */
 
 // Mock supabase - report-service에서 사용
@@ -19,21 +15,23 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: vi.fn().mockReturnValue({
       insert: vi.fn().mockResolvedValue({ error: null }),
-    }),
-    storage: {
-      from: vi.fn().mockReturnValue({
-        upload: vi.fn().mockResolvedValue({ data: { path: 'uploaded/path.pdf' }, error: null }),
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
       }),
-    },
+    }),
   },
 }))
 
-const mockUploadAnswerKey = vi.fn().mockResolvedValue('user-1/session-1/answer-key.pdf')
-vi.mock('@/lib/storage-service', () => ({
-  uploadAnswerKey: (...args: unknown[]) => mockUploadAnswerKey(...args),
+const mockGetSessionStoragePath = vi.fn()
+const mockGetSubmissionStoragePath = vi.fn()
+vi.mock('@/lib/persistence-service', () => ({
+  getSessionStoragePath: (...args: unknown[]) => mockGetSessionStoragePath(...args),
+  getSubmissionStoragePath: (...args: unknown[]) => mockGetSubmissionStoragePath(...args),
 }))
 
-// 모달 렌더 조건을 재현하는 헬퍼 (grading-workspace.tsx:465-480의 IIFE 로직)
+// 모달 렌더 조건을 재현하는 헬퍼 (grading-workspace.tsx의 ReportIssueModalWrapper 로직)
 function resolveReportModal(params: {
   showReportModal: boolean
   currentSubmission: { id: string; studentName: string } | null
@@ -46,9 +44,8 @@ function resolveReportModal(params: {
   const currentTab = useTabStore.getState().tabs.find((t) => t.id === tabId)
   const answerKeyStructure = currentTab?.answerKeyStructure
   if (!answerKeyStructure) return null
-  const answerKeyStoragePath = currentTab?.answerKeyFile?.storagePath ?? ''
 
-  return { answerKeyStructure, answerKeyStoragePath }
+  return { answerKeyStructure }
 }
 
 const mockStructure: AnswerKeyStructure = {
@@ -63,7 +60,6 @@ describe('오류 제보 모달 렌더 조건', () => {
   })
 
   it('storagePath가 없어도 answerKeyStructure가 있으면 모달이 열려야 한다', () => {
-    // storagePath 없이 탭 생성 (스캔으로 정답지 등록한 경우)
     useTabStore.setState({
       tabs: [
         {
@@ -74,7 +70,6 @@ describe('오류 제보 모달 렌더 조건', () => {
           answerKeyFile: {
             name: 'answer.pdf',
             size: 1000,
-            // storagePath 없음!
           },
           answerKeyStructure: mockStructure,
         },
@@ -90,36 +85,6 @@ describe('오류 제보 모달 렌더 조건', () => {
 
     expect(result).not.toBeNull()
     expect(result!.answerKeyStructure).toEqual(mockStructure)
-    expect(result!.answerKeyStoragePath).toBe('')
-  })
-
-  it('storagePath가 있으면 그 값이 그대로 전달되어야 한다', () => {
-    useTabStore.setState({
-      tabs: [
-        {
-          id: 'tab-2',
-          title: '테스트',
-          createdAt: Date.now(),
-          status: 'ready',
-          answerKeyFile: {
-            name: 'answer.pdf',
-            size: 1000,
-            storagePath: 'users/u1/sessions/tab-2/answer-key.pdf',
-          },
-          answerKeyStructure: mockStructure,
-        },
-      ],
-    })
-
-    const result = resolveReportModal({
-      showReportModal: true,
-      currentSubmission: { id: 'sub-1', studentName: '학생1' },
-      user: { id: 'user-1' },
-      tabId: 'tab-2',
-    })
-
-    expect(result).not.toBeNull()
-    expect(result!.answerKeyStoragePath).toBe('users/u1/sessions/tab-2/answer-key.pdf')
   })
 
   it('answerKeyStructure가 없으면 모달이 열리지 않아야 한다', () => {
@@ -131,7 +96,6 @@ describe('오류 제보 모달 렌더 조건', () => {
           createdAt: Date.now(),
           status: 'extracting',
           answerKeyFile: { name: 'answer.pdf', size: 1000 },
-          // answerKeyStructure 없음
         },
       ],
     })
@@ -184,55 +148,21 @@ describe('오류 제보 모달 렌더 조건', () => {
       ],
     })
 
-    // isAuthenticated=true이지만 user가 아직 null인 상태 시뮬레이션
-    // (Electron 딥링크 OAuth에서 onAuthStateChange 반영 전 갭)
     const result = resolveReportModal({
       showReportModal: true,
       currentSubmission: { id: 'sub-1', studentName: '학생1' },
-      user: null, // race condition: isAuthenticated는 true이나 user는 아직 null
+      user: null,
       tabId: 'tab-5',
     })
 
     expect(result).toBeNull()
   })
-
-  it('isAuthenticated=true이고 user가 있으면 모달이 정상적으로 열려야 한다', () => {
-    useTabStore.setState({
-      tabs: [
-        {
-          id: 'tab-6',
-          title: '테스트',
-          createdAt: Date.now(),
-          status: 'ready',
-          answerKeyFile: {
-            name: 'answer.pdf',
-            size: 1000,
-            storagePath: 'users/u1/sessions/tab-6/answer-key.pdf',
-          },
-          answerKeyStructure: mockStructure,
-        },
-      ],
-    })
-
-    const result = resolveReportModal({
-      showReportModal: true,
-      currentSubmission: { id: 'sub-1', studentName: '학생1' },
-      user: { id: 'user-1' },
-      tabId: 'tab-6',
-    })
-
-    expect(result).not.toBeNull()
-    expect(result!.answerKeyStructure).toEqual(mockStructure)
-  })
 })
 
-describe('오류 제보 모달 - answerKeyStoragePath fallback 업로드', () => {
-  const mockFile = new File(['pdf-content'], 'answer.pdf', { type: 'application/pdf' })
-
-  const mockSubmission: Partial<import('@/types/grading').StudentSubmission> = {
+describe('오류 제보 모달 - DB에서 storage path 조회', () => {
+  const mockSubmission: Partial<StudentSubmission> = {
     id: 'sub-1',
     studentName: '학생1',
-    storagePath: 'user-1/session-1/submissions/sub-1.pdf',
     score: { correct: 8, total: 10, percentage: 80 },
     results: [
       {
@@ -250,20 +180,20 @@ describe('오류 제보 모달 - answerKeyStoragePath fallback 업로드', () =>
     vi.clearAllMocks()
   })
 
-  it('answerKeyStoragePath가 비어있고 fileRefs가 있으면 업로드 후 제보해야 한다', async () => {
-    // 이 테스트는 report-issue-modal에 answerKeyFileRefs prop이 추가된 후 통과할 것임
+  it('제보 시 DB에서 storage path를 조회해야 한다', async () => {
+    mockGetSessionStoragePath.mockResolvedValue('user-1/session-1/answer-key.pdf')
+    mockGetSubmissionStoragePath.mockResolvedValue('user-1/session-1/submissions/sub-1.pdf')
+
     const { ReportIssueModal } = await import('../report-issue-modal')
 
     const onClose = vi.fn()
 
     render(
       <ReportIssueModal
-        submission={mockSubmission as import('@/types/grading').StudentSubmission}
+        submission={mockSubmission as StudentSubmission}
         sessionId="session-1"
         userId="user-1"
         answerKeyStructure={mockStructure}
-        answerKeyStoragePath=""
-        answerKeyFileRefs={[mockFile]}
         onClose={onClose}
       />
     )
@@ -272,24 +202,25 @@ describe('오류 제보 모달 - answerKeyStoragePath fallback 업로드', () =>
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
-      // fallback 업로드가 호출되었는지 확인
-      expect(mockUploadAnswerKey).toHaveBeenCalledWith('user-1', 'session-1', mockFile)
+      expect(mockGetSessionStoragePath).toHaveBeenCalledWith('user-1', 'session-1')
+      expect(mockGetSubmissionStoragePath).toHaveBeenCalledWith('user-1', 'session-1', 'sub-1')
     })
   })
 
-  it('answerKeyStoragePath가 있으면 업로드하지 않아야 한다', async () => {
+  it('DB에서 storage path가 null이면 빈 문자열로 제보해야 한다', async () => {
+    mockGetSessionStoragePath.mockResolvedValue(null)
+    mockGetSubmissionStoragePath.mockResolvedValue(null)
+
     const { ReportIssueModal } = await import('../report-issue-modal')
 
     const onClose = vi.fn()
 
     render(
       <ReportIssueModal
-        submission={mockSubmission as import('@/types/grading').StudentSubmission}
+        submission={mockSubmission as StudentSubmission}
         sessionId="session-1"
         userId="user-1"
         answerKeyStructure={mockStructure}
-        answerKeyStoragePath="user-1/session-1/answer-key.pdf"
-        answerKeyFileRefs={[mockFile]}
         onClose={onClose}
       />
     )
@@ -298,7 +229,8 @@ describe('오류 제보 모달 - answerKeyStoragePath fallback 업로드', () =>
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
-      expect(mockUploadAnswerKey).not.toHaveBeenCalled()
+      expect(mockGetSessionStoragePath).toHaveBeenCalledWith('user-1', 'session-1')
+      expect(mockGetSubmissionStoragePath).toHaveBeenCalledWith('user-1', 'session-1', 'sub-1')
     })
   })
 })

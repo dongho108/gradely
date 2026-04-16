@@ -533,15 +533,12 @@ function ReportIssueModalWrapper({
   const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
   const answerKeyStructure = currentTab?.answerKeyStructure;
   if (!answerKeyStructure) return null;
-  const answerKeyStoragePath = currentTab?.answerKeyFile?.storagePath ?? '';
   return (
     <ReportIssueModal
       submission={submission}
       sessionId={tabId}
       userId={userId}
       answerKeyStructure={answerKeyStructure}
-      answerKeyStoragePath={answerKeyStoragePath}
-      answerKeyFileRefs={currentTab?.answerKeyFile?.fileRefs}
       onClose={onClose}
     />
   );
