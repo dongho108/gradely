@@ -304,6 +304,78 @@ describe('calculateGradingResult with strictness', () => {
       },
     })
   })
+
+  it('strict 모드: |||로 구분된 복수 정답 중 하나 일치 시 정답', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: 'glad|||happy|||joyful' } })
+    const studentExam = makeStudentExam({ '1': 'happy' })
+
+    const result = await calculateGradingResult('sub-strict-multi', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(1)
+    expect(result.results[0].isCorrect).toBe(true)
+  })
+
+  it('strict 모드: 정규화(공백/괄호 제거) 후 일치 시 정답', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: 'hello world' } })
+    const studentExam = makeStudentExam({ '1': ' (hello world) ' })
+
+    const result = await calculateGradingResult('sub-strict-norm', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(1)
+  })
+
+  it('strict 모드: 대소문자만 다른 경우 정답', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: 'Apple' } })
+    const studentExam = makeStudentExam({ '1': 'apple' })
+
+    const result = await calculateGradingResult('sub-strict-case', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(1)
+  })
+
+  it('strict 모드: 미작성 + 정답 + 오답 혼합 시 정확한 점수 계산', async () => {
+    const answerKey = makeAnswerKey({
+      '1': { text: 'dog' },
+      '2': { text: 'cat' },
+      '3': { text: 'bird' },
+      '4': { text: 'fish' },
+    })
+    const studentExam = makeStudentExam({
+      '1': 'dog',      // 정답
+      '2': '(미작성)',   // 오답 (미작성)
+      '3': 'eagle',    // 오답 (불일치)
+      '4': 'fish',     // 정답
+    })
+
+    const result = await calculateGradingResult('sub-strict-mix', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(2)
+    expect(result.score.total).toBe(4)
+    expect(result.score.percentage).toBe(50)
+  })
+
+  it('lenient 모드: AI 실패 시 로컬 fallback', async () => {
+    const answerKey = makeAnswerKey({
+      '1': { text: 'apple' },
+      '2': { text: 'banana' },
+    })
+    const studentExam = makeStudentExam({
+      '1': 'apple',
+      '2': 'orange',
+    })
+
+    mockInvoke.mockRejectedValue(new Error('Network error'))
+
+    const result = await calculateGradingResult('sub-len-fallback', answerKey, studentExam, 'lenient')
+
+    expect(result.score.correct).toBe(1)
+    expect(result.results.find(r => r.questionNumber === 1)?.isCorrect).toBe(true)
+    expect(result.results.find(r => r.questionNumber === 2)?.isCorrect).toBe(false)
+  })
 })
 
 describe('recalculateAfterEdit with strictness', () => {
@@ -344,6 +416,31 @@ describe('recalculateAfterEdit with strictness', () => {
           question: undefined,
         }],
         strictness: 'standard',
+      },
+    })
+  })
+
+  it('lenient 모드: AI로 재채점하고 strictness 전달', async () => {
+    const results = [
+      { questionNumber: 1, studentAnswer: 'cat', correctAnswer: '경제 성장', isCorrect: false },
+    ]
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '유사 의미 허용' }] },
+      error: null,
+    })
+
+    await recalculateAfterEdit('sub-1', results, 1, '경제가 발전함', '홍길동', 'lenient')
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+      body: {
+        questions: [{
+          id: '1',
+          studentAnswer: '경제가 발전함',
+          correctAnswer: '경제 성장',
+          question: undefined,
+        }],
+        strictness: 'lenient',
       },
     })
   })
