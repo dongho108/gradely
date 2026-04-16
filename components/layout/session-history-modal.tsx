@@ -58,6 +58,7 @@ export const SessionHistoryModal: React.FC<SessionHistoryModalProps> = ({ onClos
             }
           : undefined,
         answerKeyStructure: session.answer_key_structure ?? undefined,
+        gradingStrictness: session.grading_strictness ?? undefined,
       };
 
       const storeSubs: StudentSubmission[] = dbSubs.map((sub) => ({

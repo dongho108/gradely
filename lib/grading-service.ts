@@ -1,4 +1,4 @@
-import { GradingResult, QuestionResult, AnswerKeyStructure, StudentExamStructure } from '@/types/grading';
+import { GradingResult, QuestionResult, AnswerKeyStructure, StudentExamStructure, GradingStrictness } from '@/types/grading';
 import { supabase } from './supabase';
 import { fileToImages } from './file-utils';
 import { MOCK_ANSWER_STRUCTURE, MOCK_STUDENT_EXAM_STRUCTURE } from './mock-data';
@@ -91,7 +91,8 @@ export function isAnswerCorrect(studentAnswer: string, correctAnswer: string): b
 export async function calculateGradingResult(
   submissionId: string,
   answerKey: AnswerKeyStructure,
-  studentExam: StudentExamStructure
+  studentExam: StudentExamStructure,
+  strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
   const results: QuestionResult[] = [];
   const aiQuestions: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] = [];
@@ -126,41 +127,52 @@ export async function calculateGradingResult(
     }
   });
 
-  // 2. AI 시멘틱 채점 (전체 문항 일괄 전송)
+  // 2. 채점 실행
   let correctCount = 0;
 
   if (aiQuestions.length > 0) {
-    let aiSuccess = false;
-
-    try {
-      const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
-        body: { questions: aiQuestions }
-      });
-
-      if (!error && data?.success) {
-        const aiResults: { id: string; isCorrect: boolean; reason: string }[] = data.data;
-        aiResults.forEach(aiResult => {
-          const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
-          if (questionIdx !== -1) {
-            results[questionIdx].isCorrect = aiResult.isCorrect;
-            results[questionIdx].aiReason = aiResult.reason;
-            if (aiResult.isCorrect) correctCount++;
-          }
-        });
-        aiSuccess = true;
-      }
-    } catch (error) {
-      console.warn('AI semantic grading failed, falling back to local matching:', error);
-    }
-
-    // 3. AI 실패 시 로컬 텍스트 매칭 fallback
-    if (!aiSuccess) {
+    if (strictness === 'strict') {
+      // strict 모드: AI 호출 없이 로컬 텍스트 비교
       results.forEach(result => {
         if (result.studentAnswer !== "(미작성)" && result.studentAnswer !== "(판독불가)") {
           result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer);
           if (result.isCorrect) correctCount++;
         }
       });
+    } else {
+      // standard/lenient 모드: AI 시멘틱 채점
+      let aiSuccess = false;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
+          body: { questions: aiQuestions, strictness }
+        });
+
+        if (!error && data?.success) {
+          const aiResults: { id: string; isCorrect: boolean; reason: string }[] = data.data;
+          aiResults.forEach(aiResult => {
+            const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
+            if (questionIdx !== -1) {
+              results[questionIdx].isCorrect = aiResult.isCorrect;
+              results[questionIdx].aiReason = aiResult.reason;
+              if (aiResult.isCorrect) correctCount++;
+            }
+          });
+          aiSuccess = true;
+        }
+      } catch (error) {
+        console.warn('AI semantic grading failed, falling back to local matching:', error);
+      }
+
+      // AI 실패 시 로컬 텍스트 매칭 fallback
+      if (!aiSuccess) {
+        results.forEach(result => {
+          if (result.studentAnswer !== "(미작성)" && result.studentAnswer !== "(판독불가)") {
+            result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer);
+            if (result.isCorrect) correctCount++;
+          }
+        });
+      }
     }
   }
 
@@ -196,33 +208,41 @@ export async function recalculateAfterEdit(
   results: QuestionResult[],
   editedQuestionNumber: number,
   newStudentAnswer: string,
-  studentName?: string
+  studentName?: string,
+  strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
   const editedResult = results.find(r => r.questionNumber === editedQuestionNumber);
   let newIsCorrect = false;
   let aiReason: string | undefined;
 
   if (editedResult && newStudentAnswer !== "(미작성)" && newStudentAnswer !== "(판독불가)") {
-    try {
-      const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
-        body: {
-          questions: [{
-            id: String(editedQuestionNumber),
-            studentAnswer: newStudentAnswer,
-            correctAnswer: editedResult.correctAnswer,
-            question: editedResult.question,
-          }]
-        }
-      });
+    if (strictness === 'strict') {
+      // strict 모드: AI 호출 없이 로컬 텍스트 비교
+      newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+    } else {
+      // standard/lenient 모드: AI 시멘틱 채점
+      try {
+        const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
+          body: {
+            questions: [{
+              id: String(editedQuestionNumber),
+              studentAnswer: newStudentAnswer,
+              correctAnswer: editedResult.correctAnswer,
+              question: editedResult.question,
+            }],
+            strictness,
+          }
+        });
 
-      if (!error && data?.success && data.data?.[0]) {
-        newIsCorrect = data.data[0].isCorrect;
-        aiReason = data.data[0].reason;
-      } else {
+        if (!error && data?.success && data.data?.[0]) {
+          newIsCorrect = data.data[0].isCorrect;
+          aiReason = data.data[0].reason;
+        } else {
+          newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+        }
+      } catch {
         newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
       }
-    } catch {
-      newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
     }
   }
 

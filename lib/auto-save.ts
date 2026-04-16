@@ -93,6 +93,7 @@ async function saveChanges() {
           answer_key_file_size: tab.answerKeyFile?.size ?? null,
           answer_key_storage_path: answerKeyStoragePath,
           answer_key_structure: tab.answerKeyStructure ?? null,
+          grading_strictness: tab.gradingStrictness ?? null,
           archived_at: null,
           deleted_at: null,
         })

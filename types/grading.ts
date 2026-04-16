@@ -1,4 +1,12 @@
 /**
+ * 채점 엄격도 설정
+ * - strict: 정답과 정확히 일치해야 정답 (AI 채점 없이 텍스트 비교)
+ * - standard: 의미가 같으면 허용 (AI 채점, 현재 기본값)
+ * - lenient: 핵심 의미 포함 시 넓게 허용 (AI 채점)
+ */
+export type GradingStrictness = 'strict' | 'standard' | 'lenient';
+
+/**
  * Student submission data structure
  */
 export interface StudentSubmission {

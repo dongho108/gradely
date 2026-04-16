@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { SEMANTIC_GRADING_PROMPT } from './prompts.ts';
+import { getGradingPrompt } from './prompts.ts';
 import { createProvider } from './providers/index.ts';
 
 const corsHeaders = {
@@ -41,10 +41,12 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Processing semantic grading for ${body.questions.length} questions`);
+    const strictness = body.strictness || 'standard';
+    console.log(`Processing semantic grading for ${body.questions.length} questions (strictness: ${strictness})`);
 
     const provider = createProvider();
-    const results = await provider.gradeSemantics(body.questions, SEMANTIC_GRADING_PROMPT);
+    const prompt = getGradingPrompt(strictness);
+    const results = await provider.gradeSemantics(body.questions, prompt);
 
     console.log(`Graded ${results.length} questions`);
 

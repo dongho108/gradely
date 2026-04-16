@@ -111,6 +111,7 @@ describe('calculateGradingResult', () => {
           { id: '2', studentAnswer: '책임감있는', correctAnswer: '책임감 있는', question: 'responsible' },
           { id: '3', studentAnswer: '파리', correctAnswer: 'Paris', question: undefined },
         ],
+        strictness: 'standard',
       },
     })
     expect(result.score.correct).toBe(3)
@@ -202,6 +203,147 @@ describe('calculateGradingResult', () => {
     expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
       body: {
         questions: [{ id: '1', studentAnswer: 'dog', correctAnswer: 'dog', question: undefined }],
+        strictness: 'standard',
+      },
+    })
+  })
+})
+
+describe('calculateGradingResult with strictness', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset()
+  })
+
+  it('strict 모드: AI 호출 없이 로컬 텍스트 비교만 수행', async () => {
+    const answerKey = makeAnswerKey({
+      '1': { text: 'happy' },
+      '2': { text: 'apple' },
+    })
+    const studentExam = makeStudentExam({
+      '1': 'glad',   // 동의어지만 텍스트 불일치 → 오답
+      '2': 'apple',  // 정확 일치 → 정답
+    })
+
+    const result = await calculateGradingResult('sub-strict', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(1)
+    expect(result.results.find(r => r.questionNumber === 1)?.isCorrect).toBe(false)
+    expect(result.results.find(r => r.questionNumber === 2)?.isCorrect).toBe(true)
+  })
+
+  it('strict 모드: 미작성/판독불가도 AI 없이 오답 처리', async () => {
+    const answerKey = makeAnswerKey({
+      '1': { text: 'dog' },
+      '2': { text: 'cat' },
+    })
+    const studentExam = makeStudentExam({
+      '1': '(미작성)',
+      '2': 'cat',
+    })
+
+    const result = await calculateGradingResult('sub-strict-2', answerKey, studentExam, 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.score.correct).toBe(1)
+  })
+
+  it('standard 모드: AI에 strictness 전달', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: 'happy' } })
+    const studentExam = makeStudentExam({ '1': 'glad' })
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '동의어' }] },
+      error: null,
+    })
+
+    await calculateGradingResult('sub-std', answerKey, studentExam, 'standard')
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+      body: {
+        questions: [{ id: '1', studentAnswer: 'glad', correctAnswer: 'happy', question: undefined }],
+        strictness: 'standard',
+      },
+    })
+  })
+
+  it('lenient 모드: AI에 strictness 전달', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: '경제 성장' } })
+    const studentExam = makeStudentExam({ '1': '경제가 발전함' })
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '유사 의미' }] },
+      error: null,
+    })
+
+    await calculateGradingResult('sub-len', answerKey, studentExam, 'lenient')
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+      body: {
+        questions: [{ id: '1', studentAnswer: '경제가 발전함', correctAnswer: '경제 성장', question: undefined }],
+        strictness: 'lenient',
+      },
+    })
+  })
+
+  it('strictness 미지정 시 기본값 standard로 동작 (AI 호출)', async () => {
+    const answerKey = makeAnswerKey({ '1': { text: 'hello' } })
+    const studentExam = makeStudentExam({ '1': 'hi' })
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '인사' }] },
+      error: null,
+    })
+
+    await calculateGradingResult('sub-default', answerKey, studentExam)
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+      body: {
+        questions: [{ id: '1', studentAnswer: 'hi', correctAnswer: 'hello', question: undefined }],
+        strictness: 'standard',
+      },
+    })
+  })
+})
+
+describe('recalculateAfterEdit with strictness', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset()
+  })
+
+  it('strict 모드: AI 호출 없이 로컬 비교로 재채점', async () => {
+    const results = [
+      { questionNumber: 1, studentAnswer: 'cat', correctAnswer: 'dog', isCorrect: false },
+    ]
+
+    const result = await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동', 'strict')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.results[0].isCorrect).toBe(true)
+    expect(result.results[0].isEdited).toBe(true)
+  })
+
+  it('standard 모드: AI로 재채점하고 strictness 전달', async () => {
+    const results = [
+      { questionNumber: 1, studentAnswer: 'cat', correctAnswer: 'dog', isCorrect: false },
+    ]
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '수정 후 정답' }] },
+      error: null,
+    })
+
+    await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동', 'standard')
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+      body: {
+        questions: [{
+          id: '1',
+          studentAnswer: 'dog',
+          correctAnswer: 'dog',
+          question: undefined,
+        }],
+        strictness: 'standard',
       },
     })
   })

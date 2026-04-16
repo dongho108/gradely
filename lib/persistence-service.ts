@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { AnswerKeyStructure, QuestionResult } from '@/types/grading';
+import { AnswerKeyStructure, QuestionResult, GradingStrictness } from '@/types/grading';
 
 // --- DB row types ---
 
@@ -13,6 +13,7 @@ export interface PersistedExamSession {
   answer_key_file_size: number | null;
   answer_key_storage_path: string | null;
   answer_key_structure: AnswerKeyStructure | null;
+  grading_strictness: GradingStrictness | null;
   archived_at: string | null;
   deleted_at: string | null;
   updated_at: string;

@@ -2,7 +2,7 @@
 
 import { useTabStore } from "@/store/use-tab-store";
 import { cn } from "@/lib/utils";
-import { Plus, X, LogOut, Download, RefreshCw, RotateCw, History } from "lucide-react";
+import { Plus, X, LogOut, Download, RefreshCw, RotateCw, History, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { isElectron } from "@/lib/is-electron";
@@ -11,6 +11,8 @@ import { GoogleLoginButton } from "@/components/auth/google-login-button";
 import { ScannerStatusIndicator } from "@/features/scanner/components/scanner-status-indicator";
 import { archiveSession } from "@/lib/persistence-service";
 import { SessionHistoryModal } from "./session-history-modal";
+import { useUserPreferencesStore } from "@/store/use-user-preferences-store";
+import { GradingStrictnessSelector } from "@/components/ui/grading-strictness-selector";
 
 export function Header() {
   const { tabs, activeTabId, addTab, setActiveTab, removeTab, updateTabTitle } = useTabStore();
@@ -24,7 +26,12 @@ export function Header() {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'available' | 'downloading' | 'ready'>('idle');
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const defaultGradingStrictness = useUserPreferencesStore((s) => s.defaultGradingStrictness);
+  const setDefaultGradingStrictness = useUserPreferencesStore((s) => s.setDefaultGradingStrictness);
+  const savePreferences = useUserPreferencesStore((s) => s.savePreferences);
   const inputRef = useRef<HTMLInputElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   // Initialize with one tab if empty on mount (Client-side only)
   useEffect(() => {
@@ -284,6 +291,40 @@ export function Header() {
               <span className="hidden sm:inline text-sm font-medium text-gray-700">
                 {user?.user_metadata?.full_name || user?.email}
               </span>
+            </div>
+            <div className="relative" ref={settingsRef}>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className={cn(
+                  "p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors",
+                  showSettings && "bg-gray-100 text-primary"
+                )}
+                aria-label="설정"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+              {showSettings && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)} />
+                  <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-white rounded-xl shadow-lg border border-gray-200 p-4">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">채점 기본 설정</h3>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-2 block">기본 채점 엄격도</label>
+                      <GradingStrictnessSelector
+                        value={defaultGradingStrictness}
+                        onChange={(strictness) => {
+                          setDefaultGradingStrictness(strictness);
+                          if (user?.id) savePreferences(user.id);
+                        }}
+                        size="sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-2">
+                        새 시험에 자동 적용됩니다. 시험별로 개별 변경할 수 있습니다.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <button
               onClick={signOut}

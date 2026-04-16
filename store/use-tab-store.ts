@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { ExamSession, ClassifiedStudent, AnswerKeyEntry, ScannedPage } from '@/types';
-import { StudentSubmission, GradingResult, AnswerKeyStructure, StudentExamStructure } from '@/types/grading';
+import { StudentSubmission, GradingResult, AnswerKeyStructure, StudentExamStructure, GradingStrictness } from '@/types/grading';
 
 /**
  * Merges OCR results from multiple scanned pages into a single StudentExamStructure.
@@ -59,6 +59,9 @@ interface TabState {
   updateSubmissionGrade: (tabId: string, submissionId: string, result: GradingResult) => void;
   setSubmissionStatus: (tabId: string, submissionId: string, status: StudentSubmission['status']) => void;
   removeSubmission: (tabId: string, submissionId: string) => void;
+
+  // Grading Strictness
+  setGradingStrictness: (tabId: string, strictness: GradingStrictness | undefined) => void;
 
   // Scanner Actions
   addTabFromScan: (params: { students: ClassifiedStudent[]; answerKeys: AnswerKeyEntry[] }) => number;
@@ -144,6 +147,13 @@ export const useTabStore = create<TabState>((set, get) => ({
         t.id === id 
           ? { ...t, answerKeyStructure: structure, status: 'ready', title: structure.title || t.title } 
           : t
+      ),
+    })),
+
+  setGradingStrictness: (tabId, strictness) =>
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, gradingStrictness: strictness } : t
       ),
     })),
 

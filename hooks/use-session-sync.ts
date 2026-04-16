@@ -4,6 +4,7 @@ import { useTabStore, StoreExamSession } from '@/store/use-tab-store';
 import { loadUserSessions, loadSessionSubmissions } from '@/lib/persistence-service';
 import { startAutoSave, stopAutoSave } from '@/lib/auto-save';
 import { StudentSubmission } from '@/types/grading';
+import { useUserPreferencesStore } from '@/store/use-user-preferences-store';
 
 /** Check if an error is likely an auth/session expiration error */
 function isAuthError(error: unknown): boolean {
@@ -47,6 +48,9 @@ export function useSessionSync() {
       setHydrationError(null);
 
       try {
+        // 사용자 기본 설정 로드
+        useUserPreferencesStore.getState().loadPreferences(userId);
+
         const dbSessions = await loadUserSessions(userId);
 
         if (dbSessions.length === 0) {
@@ -70,6 +74,7 @@ export function useSessionSync() {
               }
             : undefined,
           answerKeyStructure: s.answer_key_structure ?? undefined,
+          gradingStrictness: s.grading_strictness ?? undefined,
         }));
 
         // Load submissions for all sessions in parallel

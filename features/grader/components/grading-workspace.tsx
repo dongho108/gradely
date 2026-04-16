@@ -9,7 +9,8 @@ import { ReportIssueModal } from "./report-issue-modal";
 // import { PDFViewer } from "./pdf-viewer"; // Can't import directly due to DOMMatrix error
 import { SubmissionList } from "./submission-list";
 import { GradingResultPanel } from "./grading-result-panel";
-import { StudentSubmission } from "@/types/grading";
+import { StudentSubmission, GradingStrictness } from "@/types/grading";
+import { useUserPreferencesStore } from "@/store/use-user-preferences-store";
 import { Upload, Sparkles, FileText, ClipboardList, ScanLine, List } from "lucide-react";
 import { AnswerKeyStructurePanel } from "./answer-key-structure-panel";
 import { ScanSettingsPopover } from "@/features/scanner/components/scan-settings-popover";
@@ -92,7 +93,10 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
         const images = await filesToImages(files);
         examStructure = await extractExamStructureFromImages(images);
       }
-      const result = await calculateGradingResult(submissionId, answerKeyStructure, examStructure);
+      const strictness: GradingStrictness = currentTab.gradingStrictness
+        ?? useUserPreferencesStore.getState().defaultGradingStrictness
+        ?? 'standard';
+      const result = await calculateGradingResult(submissionId, answerKeyStructure, examStructure, strictness);
       updateSubmissionGrade(tabId, submissionId, result);
     } catch (error) {
       console.error('Grading failed:', error);
@@ -138,12 +142,17 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
 
   const handleAnswerEdit = async (questionNumber: number, newAnswer: string) => {
     if (!currentSubmission?.results) return;
+    const currentTab = useTabStore.getState().tabs.find(t => t.id === tabId);
+    const strictness: GradingStrictness = currentTab?.gradingStrictness
+      ?? useUserPreferencesStore.getState().defaultGradingStrictness
+      ?? 'standard';
     const updatedResult = await recalculateAfterEdit(
       currentSubmission.id,
       currentSubmission.results,
       questionNumber,
       newAnswer,
-      currentSubmission.studentName
+      currentSubmission.studentName,
+      strictness
     );
     updateSubmissionGrade(tabId, currentSubmission.id, updatedResult);
   };
@@ -485,6 +494,14 @@ export function GradingWorkspace({ tabId, answerKeyFiles }: GradingWorkspaceProp
                 <div className="flex-1 rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
                   <AnswerKeyStructurePanel
                     structure={useTabStore.getState().tabs.find(t => t.id === tabId)?.answerKeyStructure}
+                    gradingStrictness={
+                      useTabStore.getState().tabs.find(t => t.id === tabId)?.gradingStrictness
+                      ?? useUserPreferencesStore.getState().defaultGradingStrictness
+                      ?? 'standard'
+                    }
+                    onStrictnessChange={(strictness) => {
+                      useTabStore.getState().setGradingStrictness(tabId, strictness);
+                    }}
                   />
                 </div>
               ) : (

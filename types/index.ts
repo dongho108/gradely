@@ -1,3 +1,5 @@
+import type { GradingStrictness } from './grading'
+
 /**
  * Represents a single tab (exam session) in the application.
  */
@@ -6,7 +8,7 @@ export interface ExamSession {
   title: string;
   createdAt: number;
   status: 'idle' | 'uploading' | 'extracting' | 'ready' | 'grading' | 'scanning-answer';
-  
+
   // Metadata for the Answer Key PDF
   answerKeyFile?: {
     name: string;
@@ -16,6 +18,9 @@ export interface ExamSession {
     // Supabase Storage path (used to lazy-download the file when needed)
     storagePath?: string;
   };
+
+  // 채점 엄격도 (null/undefined → 사용자 기본값 사용)
+  gradingStrictness?: GradingStrictness;
 }
 
 export type TabId = string;
