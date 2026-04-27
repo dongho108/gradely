@@ -2,6 +2,7 @@ import { GradingResult, QuestionResult, AnswerKeyStructure, StudentExamStructure
 import { supabase } from './supabase';
 import { fileToImages } from './file-utils';
 import { MOCK_ANSWER_STRUCTURE, MOCK_STUDENT_EXAM_STRUCTURE } from './mock-data';
+import { getGradingPrompt } from './grading-prompts';
 
 /**
  * Extracts answer structure from pre-converted base64 images.
@@ -144,8 +145,9 @@ export async function calculateGradingResult(
       let aiSuccess = false;
 
       try {
-        const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
-          body: { questions: aiQuestions, strictness }
+        const systemPrompt = getGradingPrompt(strictness);
+        const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
+          body: { questions: aiQuestions, systemPrompt }
         });
 
         if (!error && data?.success) {
@@ -222,7 +224,8 @@ export async function recalculateAfterEdit(
     } else {
       // standard/lenient 모드: AI 시멘틱 채점
       try {
-        const { data, error } = await supabase.functions.invoke('verify-semantic-grading', {
+        const systemPrompt = getGradingPrompt(strictness);
+        const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
           body: {
             questions: [{
               id: String(editedQuestionNumber),
@@ -230,7 +233,7 @@ export async function recalculateAfterEdit(
               correctAnswer: editedResult.correctAnswer,
               question: editedResult.question,
             }],
-            strictness,
+            systemPrompt,
           }
         });
 

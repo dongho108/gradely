@@ -180,7 +180,7 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
     }
   })
 
-  it('AI에 전송되는 strictness는 lenient', async () => {
+  it('AI에 전송되는 systemPrompt는 lenient 프롬프트 (한↔영 사전 번역어 규칙 포함)', async () => {
     mockInvoke.mockResolvedValue({
       data: {
         success: true,
@@ -191,8 +191,8 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
 
     await calculateGradingResult('regrade-5', buildAnswerKey(), buildStudentExam(), 'lenient')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', expect.objectContaining({
-      body: expect.objectContaining({ strictness: 'lenient' }),
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', expect.objectContaining({
+      body: expect.objectContaining({ systemPrompt: expect.stringContaining('사전 번역어') }),
     }))
   })
 

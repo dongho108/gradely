@@ -104,14 +104,14 @@ describe('calculateGradingResult', () => {
 
     const result = await calculateGradingResult('sub-2', answerKey, studentExam)
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [
           { id: '1', studentAnswer: 'glad', correctAnswer: 'happy', question: 'What does 행복한 mean?' },
           { id: '2', studentAnswer: '책임감있는', correctAnswer: '책임감 있는', question: 'responsible' },
           { id: '3', studentAnswer: '파리', correctAnswer: 'Paris', question: undefined },
         ],
-        strictness: 'standard',
+        systemPrompt: expect.any(String),
       },
     })
     expect(result.score.correct).toBe(3)
@@ -200,10 +200,10 @@ describe('calculateGradingResult', () => {
     expect(result.score.correct).toBe(1)
     expect(result.score.total).toBe(3)
     // AI는 Q1만 전송받아야 함
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{ id: '1', studentAnswer: 'dog', correctAnswer: 'dog', question: undefined }],
-        strictness: 'standard',
+        systemPrompt: expect.any(String),
       },
     })
   })
@@ -259,10 +259,10 @@ describe('calculateGradingResult with strictness', () => {
 
     await calculateGradingResult('sub-std', answerKey, studentExam, 'standard')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{ id: '1', studentAnswer: 'glad', correctAnswer: 'happy', question: undefined }],
-        strictness: 'standard',
+        systemPrompt: expect.any(String),
       },
     })
   })
@@ -278,10 +278,10 @@ describe('calculateGradingResult with strictness', () => {
 
     await calculateGradingResult('sub-len', answerKey, studentExam, 'lenient')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{ id: '1', studentAnswer: '경제가 발전함', correctAnswer: '경제 성장', question: undefined }],
-        strictness: 'lenient',
+        systemPrompt: expect.any(String),
       },
     })
   })
@@ -297,10 +297,10 @@ describe('calculateGradingResult with strictness', () => {
 
     await calculateGradingResult('sub-default', answerKey, studentExam)
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{ id: '1', studentAnswer: 'hi', correctAnswer: 'hello', question: undefined }],
-        strictness: 'standard',
+        systemPrompt: expect.any(String),
       },
     })
   })
@@ -415,7 +415,7 @@ describe('calculateGradingResult — 관대 모드 한↔영 사전 번역 인�
 
     const result = await calculateGradingResult('sub-poly-2', answerKey, studentExam, 'lenient')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{
           id: '1',
@@ -423,7 +423,7 @@ describe('calculateGradingResult — 관대 모드 한↔영 사전 번역 인�
           correctAnswer: '적응하다',
           question: 'adapt를 한글로?',
         }],
-        strictness: 'lenient',
+        systemPrompt: expect.any(String),
       },
     })
     expect(result.score.correct).toBe(1)
@@ -586,8 +586,8 @@ describe('calculateGradingResult — 관대 모드 한↔영 사전 번역 인�
 
     await calculateGradingResult('sub-poly-param', answerKey, studentExam, 'lenient')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
-      body: expect.objectContaining({ strictness: 'lenient' }),
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
+      body: expect.objectContaining({ systemPrompt: expect.stringContaining('사전 번역어') }),
     })
   })
 
@@ -604,8 +604,8 @@ describe('calculateGradingResult — 관대 모드 한↔영 사전 번역 인�
 
     const result = await calculateGradingResult('sub-poly-std', answerKey, studentExam, 'standard')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
-      body: expect.objectContaining({ strictness: 'standard' }),
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
+      body: expect.objectContaining({ systemPrompt: expect.stringContaining('언어 일치 필수') }),
     })
     expect(result.score.correct).toBe(0)
     expect(result.results[0].isCorrect).toBe(false)
@@ -641,7 +641,7 @@ describe('recalculateAfterEdit with strictness', () => {
 
     await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동', 'standard')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{
           id: '1',
@@ -649,7 +649,7 @@ describe('recalculateAfterEdit with strictness', () => {
           correctAnswer: 'dog',
           question: undefined,
         }],
-        strictness: 'standard',
+        systemPrompt: expect.any(String),
       },
     })
   })
@@ -666,7 +666,7 @@ describe('recalculateAfterEdit with strictness', () => {
 
     await recalculateAfterEdit('sub-1', results, 1, '경제가 발전함', '홍길동', 'lenient')
 
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading', {
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{
           id: '1',
@@ -674,7 +674,7 @@ describe('recalculateAfterEdit with strictness', () => {
           correctAnswer: '경제 성장',
           question: undefined,
         }],
-        strictness: 'lenient',
+        systemPrompt: expect.any(String),
       },
     })
   })
