@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Eye, Filter, Flag, Pencil, Sparkles, X } from "lucide-react";
+import { ChevronDown, Eye, Filter, Flag, Loader2, Pencil, Sparkles, X } from "lucide-react";
 import type { StudentSubmission, GradingStrictness } from "@/types/grading";
 import { useTabStore } from "@/store/use-tab-store";
 import { useUserPreferencesStore } from "@/store/use-user-preferences-store";
@@ -12,7 +12,7 @@ interface GradingResultPanelV2Props {
   onReportIssue?: () => void;
   onOpenAnswerKey: () => void;
   onViewOriginal?: () => void;
-  onAnswerEdit?: (questionNumber: number, newAnswer: string) => void;
+  onAnswerEdit?: (questionNumber: number, newAnswer: string) => void | Promise<void>;
   onCorrectToggle?: (questionNumber: number, isCorrect: boolean) => void;
   onStudentNameEdit?: (newName: string) => void;
 }
@@ -60,6 +60,8 @@ export function GradingResultPanelV2({
   const [editValue, setEditValue] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState("");
+  // 낙관적 인디케이터 — onAnswerEdit가 끝날 때까지 카드에 새 값 + 스피너 노출
+  const [pendingEdits, setPendingEdits] = useState<Record<number, string>>({});
 
   const startEditAnswer = (qNum: number, current: string) => {
     if (!onAnswerEdit) return;
@@ -67,13 +69,23 @@ export function GradingResultPanelV2({
     setEditValue(current);
   };
   const confirmEditAnswer = () => {
-    if (editingQ != null && onAnswerEdit) {
-      const orig = (submission.results ?? []).find((r) => r.questionNumber === editingQ)
-        ?.studentAnswer ?? "";
-      if (editValue !== orig) onAnswerEdit(editingQ, editValue);
-    }
+    const qNum = editingQ;
+    const newVal = editValue;
     setEditingQ(null);
     setEditValue("");
+    if (qNum == null || !onAnswerEdit) return;
+    const orig = (submission.results ?? []).find((r) => r.questionNumber === qNum)
+      ?.studentAnswer ?? "";
+    if (newVal === orig) return;
+
+    setPendingEdits((prev) => ({ ...prev, [qNum]: newVal }));
+    Promise.resolve(onAnswerEdit(qNum, newVal)).finally(() => {
+      setPendingEdits((prev) => {
+        const next = { ...prev };
+        delete next[qNum];
+        return next;
+      });
+    });
   };
   const cancelEditAnswer = () => {
     setEditingQ(null);
@@ -380,16 +392,33 @@ export function GradingResultPanelV2({
               </div>
             ) : (
               <div className="g-qgrid">
-                {visible.map((r) => (
+                {visible.map((r) => {
+                  const pending = pendingEdits[r.questionNumber];
+                  const isPending = pending !== undefined;
+                  return (
                   <div
                     key={r.questionNumber}
-                    className={`g-qcard ${r.isCorrect ? "" : "is-wrong"}`}
+                    className={`g-qcard ${r.isCorrect && !isPending ? "" : isPending ? "" : "is-wrong"}`}
+                    style={isPending ? { opacity: 0.7 } : undefined}
                   >
                     <div className="g-qcard-head">
                       <span className="g-qcard-num">
                         Q {String(r.questionNumber).padStart(2, "0")}
                       </span>
-                      {onCorrectToggle ? (
+                      {isPending ? (
+                        <span
+                          className="g-ox"
+                          style={{
+                            width: 24,
+                            height: 24,
+                            background: "var(--wds-cool-95)",
+                            color: "var(--wds-label-alternative)",
+                          }}
+                          title="채점 중..."
+                        >
+                          <Loader2 size={12} className="animate-spin" />
+                        </span>
+                      ) : onCorrectToggle ? (
                         <button
                           type="button"
                           className={`g-ox ${r.isCorrect ? "correct" : "wrong"}`}
@@ -476,27 +505,36 @@ export function GradingResultPanelV2({
                         <span
                           className={`val ${r.isCorrect ? "correct" : "wrong"}`}
                           onClick={() =>
+                            !isPending &&
                             startEditAnswer(r.questionNumber, r.studentAnswer ?? "")
                           }
                           style={{
-                            cursor: onAnswerEdit ? "pointer" : "default",
+                            cursor: onAnswerEdit && !isPending ? "pointer" : "default",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: 4,
+                            color: isPending ? "var(--wds-label-neutral)" : undefined,
                           }}
-                          title={onAnswerEdit ? "클릭하여 답안 수정" : undefined}
+                          title={
+                            isPending
+                              ? "채점 중..."
+                              : onAnswerEdit
+                                ? "클릭하여 답안 수정"
+                                : undefined
+                          }
                         >
-                          {r.isEdited && (
+                          {r.isEdited && !isPending && (
                             <Pencil size={10} style={{ color: "var(--g-warn)" }} />
                           )}
-                          {r.studentAnswer || "— 미응답"}
+                          {isPending ? pending : r.studentAnswer || "— 미응답"}
                         </span>
                       )}
                       <span className="lbl">정답</span>
                       <span className="val">{r.correctAnswer}</span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

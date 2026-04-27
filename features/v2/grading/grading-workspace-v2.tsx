@@ -14,7 +14,6 @@ import { ReportIssueModalV2 } from "./report-issue-modal-v2";
 import {
   calculateGradingResult,
   extractExamStructureFromImages,
-  recalculateAfterEdit,
   toggleCorrectStatus,
 } from "@/lib/grading-service";
 import { filesToImages } from "@/lib/file-utils";
@@ -190,22 +189,21 @@ export function GradingWorkspaceV2({ onScanClick }: GradingWorkspaceV2Props) {
     setView({ kind: "student", submissionId: sub.id });
   };
 
-  const handleAnswerEdit = async (questionNumber: number, newAnswer: string) => {
-    if (!tabId || !currentSubmission?.results) return;
-    const tab = useTabStore.getState().tabs.find((t) => t.id === tabId);
-    const strictness: GradingStrictness =
-      tab?.gradingStrictness ??
-      useUserPreferencesStore.getState().defaultGradingStrictness ??
-      "standard";
-    const updated = await recalculateAfterEdit(
-      currentSubmission.id,
-      currentSubmission.results,
-      questionNumber,
-      newAnswer,
-      currentSubmission.studentName,
-      strictness,
+  // 수동 편집 시 AI 재채점은 건너뛰고 텍스트만 즉시 반영. 정/오답은
+  // 그대로 두고, 필요하면 사용자가 OX 배지로 직접 토글한다.
+  const handleAnswerEdit = (questionNumber: number, newAnswer: string) => {
+    if (!tabId || !currentSubmission?.results || !currentSubmission.score) return;
+    const updatedResults = currentSubmission.results.map((r) =>
+      r.questionNumber === questionNumber
+        ? { ...r, studentAnswer: newAnswer, isEdited: true }
+        : r,
     );
-    updateSubmissionGrade(tabId, currentSubmission.id, updated);
+    updateSubmissionGrade(tabId, currentSubmission.id, {
+      submissionId: currentSubmission.id,
+      studentName: currentSubmission.studentName,
+      score: currentSubmission.score,
+      results: updatedResults,
+    });
   };
 
   const handleCorrectToggle = (questionNumber: number, newIsCorrect: boolean) => {
