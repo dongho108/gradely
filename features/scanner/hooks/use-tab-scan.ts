@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useTabStore } from '@/store/use-tab-store'
+import { useAuthStore } from '@/store/use-auth-store'
+import { uploadAndTrackSubmission } from '@/lib/auto-save'
 import { base64ToFile } from '@/lib/scan-utils'
 import type { ScanOptions } from '@/types'
 
@@ -60,11 +62,16 @@ export function useTabScan(tabId: string): UseTabScanReturn {
 
         // Duplex: 2페이지씩 묶어서 하나의 submission으로 등록
         const groupSize = mergedScanOptions.source === 'duplex' ? 2 : 1
+        const userId = useAuthStore.getState().user?.id
         for (let i = 0; i < scannedFiles.length; i += groupSize) {
           const groupFiles = scannedFiles.slice(i, i + groupSize)
           const submissionId = Math.random().toString(36).substring(2, 9)
           useTabStore.getState().addSubmission(tabId, groupFiles, submissionId)
           useTabStore.getState().setSubmissionStatus(tabId, submissionId, 'queued')
+          // 오류 제보 첨부용으로 Storage 업로드 (duplex 시 앞면만)
+          if (userId) {
+            uploadAndTrackSubmission(userId, tabId, submissionId, groupFiles[0])
+          }
         }
 
         currentPageCount += scannedFiles.length
