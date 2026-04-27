@@ -28,11 +28,16 @@ export function ExamRail({ onNewExamClick }: ExamRailProps) {
 
   const [query, setQuery] = useState("");
 
+  const visibleTabs = useMemo(
+    () => tabs.filter((t) => t.title.trim().toLowerCase() !== "new exam"),
+    [tabs],
+  );
+
   const filteredTabs = useMemo(() => {
-    if (!query.trim()) return tabs;
+    if (!query.trim()) return visibleTabs;
     const q = query.trim().toLowerCase();
-    return tabs.filter((t) => t.title.toLowerCase().includes(q));
-  }, [tabs, query]);
+    return visibleTabs.filter((t) => t.title.toLowerCase().includes(q));
+  }, [visibleTabs, query]);
 
   const handleDelete = (e: React.MouseEvent, tabId: string, title: string) => {
     e.stopPropagation();
@@ -72,7 +77,7 @@ export function ExamRail({ onNewExamClick }: ExamRailProps) {
               textAlign: "center",
             }}
           >
-            {tabs.length === 0 ? "아직 시험이 없어요" : "검색 결과가 없어요"}
+            {visibleTabs.length === 0 ? "아직 시험이 없어요" : "검색 결과가 없어요"}
           </div>
         ) : (
           filteredTabs.map((tab) => {
