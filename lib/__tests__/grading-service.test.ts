@@ -78,10 +78,10 @@ describe('calculateGradingResult', () => {
     expect(result.results.every(r => !r.isCorrect)).toBe(true)
   })
 
-  it('작성된 문항은 모두 AI에 전송하고 결과를 반영', async () => {
+  it('로컬 정확 일치 항목은 AI 호출 생략, 나머지만 AI에 전송', async () => {
     const answerKey = makeAnswerKey({
       '1': { text: 'happy', question: 'What does 행복한 mean?' },
-      '2': { text: '책임감 있는', question: 'responsible' },
+      '2': { text: '책임감 있는', question: 'responsible' },  // 학생 '책임감있는'은 정규화 후 일치 → 로컬 매칭
       '3': { text: 'Paris' },
     })
     const studentExam = makeStudentExam({
@@ -95,7 +95,6 @@ describe('calculateGradingResult', () => {
         success: true,
         data: [
           { id: '1', isCorrect: true, reason: '동의어' },
-          { id: '2', isCorrect: true, reason: '의미 동일' },
           { id: '3', isCorrect: true, reason: '영한 번역 일치' },
         ],
       },
@@ -104,11 +103,11 @@ describe('calculateGradingResult', () => {
 
     const result = await calculateGradingResult('sub-2', answerKey, studentExam)
 
+    // 로컬 매칭된 #2는 AI 페이로드에서 제외
     expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [
           { id: '1', studentAnswer: 'glad', correctAnswer: 'happy', question: 'What does 행복한 mean?' },
-          { id: '2', studentAnswer: '책임감있는', correctAnswer: '책임감 있는', question: 'responsible' },
           { id: '3', studentAnswer: '파리', correctAnswer: 'Paris', question: undefined },
         ],
         systemPrompt: expect.any(String),
@@ -116,6 +115,7 @@ describe('calculateGradingResult', () => {
     })
     expect(result.score.correct).toBe(3)
     expect(result.results[0].aiReason).toBe('동의어')
+    expect(result.results[1].aiReason).toBe('정답 일치')  // 로컬 매칭
     expect(result.results[2].aiReason).toBe('영한 번역 일치')
   })
 
@@ -186,26 +186,14 @@ describe('calculateGradingResult', () => {
       // '3' is missing → defaults to (미작성)
     })
 
-    mockInvoke.mockResolvedValue({
-      data: {
-        success: true,
-        data: [{ id: '1', isCorrect: true, reason: '정확 일치' }],
-      },
-      error: null,
-    })
-
     const result = await calculateGradingResult('sub-6', answerKey, studentExam)
 
-    // Q1: AI 정답, Q2: 미작성 오답, Q3: 미작성 오답
+    // Q1: 로컬 정확 일치 정답, Q2: 미작성 오답, Q3: 미작성 오답
     expect(result.score.correct).toBe(1)
     expect(result.score.total).toBe(3)
-    // AI는 Q1만 전송받아야 함
-    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
-      body: {
-        questions: [{ id: '1', studentAnswer: 'dog', correctAnswer: 'dog', question: undefined }],
-        systemPrompt: expect.any(String),
-      },
-    })
+    // dog vs dog는 로컬 매칭으로 처리되어 AI 호출이 발생하지 않음
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.results.find(r => r.questionNumber === 1)?.aiReason).toBe('정답 일치')
   })
 })
 
@@ -629,23 +617,24 @@ describe('recalculateAfterEdit with strictness', () => {
     expect(result.results[0].isEdited).toBe(true)
   })
 
-  it('standard 모드: AI로 재채점하고 strictness 전달', async () => {
+  it('standard 모드: 로컬 불일치 답안은 AI로 재채점하고 systemPrompt 전달', async () => {
     const results = [
       { questionNumber: 1, studentAnswer: 'cat', correctAnswer: 'dog', isCorrect: false },
     ]
 
     mockInvoke.mockResolvedValue({
-      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '수정 후 정답' }] },
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '동의어' }] },
       error: null,
     })
 
-    await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동', 'standard')
+    // 학생 답안 'puppy'는 'dog'와 텍스트 일치 안 함 → AI 호출 필요
+    await recalculateAfterEdit('sub-1', results, 1, 'puppy', '홍길동', 'standard')
 
     expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
       body: {
         questions: [{
           id: '1',
-          studentAnswer: 'dog',
+          studentAnswer: 'puppy',
           correctAnswer: 'dog',
           question: undefined,
         }],
@@ -685,27 +674,41 @@ describe('recalculateAfterEdit', () => {
     mockInvoke.mockReset()
   })
 
-  it('수정된 답안을 AI로 재채점', async () => {
+  it('수정된 답안이 로컬 정확 일치하면 AI 호출 없이 정답 처리', async () => {
     const results = [
       { questionNumber: 1, studentAnswer: 'cat', correctAnswer: 'dog', isCorrect: false },
       { questionNumber: 2, studentAnswer: 'apple', correctAnswer: 'apple', isCorrect: true },
     ]
 
+    const result = await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(result.results[0].isCorrect).toBe(true)
+    expect(result.results[0].isEdited).toBe(true)
+    expect(result.results[0].aiReason).toBe('정답 일치')
+    expect(result.results[0].studentAnswer).toBe('dog')
+    expect(result.score.correct).toBe(2)
+  })
+
+  it('수정된 답안이 로컬 매칭 안 되면 AI로 재채점', async () => {
+    const results = [
+      { questionNumber: 1, studentAnswer: 'cat', correctAnswer: 'dog', isCorrect: false },
+    ]
+
     mockInvoke.mockResolvedValue({
       data: {
         success: true,
-        data: [{ id: '1', isCorrect: true, reason: '수정 후 정답' }],
+        data: [{ id: '1', isCorrect: true, reason: '동의어' }],
       },
       error: null,
     })
 
-    const result = await recalculateAfterEdit('sub-1', results, 1, 'dog', '홍길동')
+    const result = await recalculateAfterEdit('sub-1', results, 1, 'puppy', '홍길동')
 
+    expect(mockInvoke).toHaveBeenCalled()
     expect(result.results[0].isCorrect).toBe(true)
     expect(result.results[0].isEdited).toBe(true)
-    expect(result.results[0].aiReason).toBe('수정 후 정답')
-    expect(result.results[0].studentAnswer).toBe('dog')
-    expect(result.score.correct).toBe(2)
+    expect(result.results[0].aiReason).toBe('동의어')
   })
 
   it('AI 실패 시 로컬 매칭 fallback', async () => {

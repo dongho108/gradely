@@ -196,7 +196,7 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
     }))
   })
 
-  it('AI에 전송되는 questions 페이로드: id/studentAnswer/correctAnswer/question 모두 포함', async () => {
+  it('AI에 전송되는 questions 페이로드: 로컬 불일치 항목만 포함하며 구조가 올바르다', async () => {
     mockInvoke.mockResolvedValue({
       data: {
         success: true,
@@ -209,7 +209,9 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
 
     const call = mockInvoke.mock.calls[0]
     const payload = call[1] as { body: { questions: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] } }
-    expect(payload.body.questions).toHaveLength(50)
+    // 로컬 매칭된 항목은 제외되므로 길이가 50보다 작거나 같음
+    expect(payload.body.questions.length).toBeLessThanOrEqual(50)
+    expect(payload.body.questions.length).toBeGreaterThan(0)
     for (const q of payload.body.questions) {
       const snap = SNAPSHOT_RESULTS.find(r => String(r.questionNumber) === q.id)!
       expect(q.studentAnswer).toBe(snap.studentAnswer)

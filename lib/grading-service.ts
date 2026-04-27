@@ -141,39 +141,48 @@ export async function calculateGradingResult(
         }
       });
     } else {
-      // standard/lenient 모드: AI 시멘틱 채점
-      let aiSuccess = false;
-
-      try {
-        const systemPrompt = getGradingPrompt(strictness);
-        const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
-          body: { questions: aiQuestions, systemPrompt }
-        });
-
-        if (!error && data?.success) {
-          const aiResults: { id: string; isCorrect: boolean; reason: string }[] = data.data;
-          aiResults.forEach(aiResult => {
-            const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
-            if (questionIdx !== -1) {
-              results[questionIdx].isCorrect = aiResult.isCorrect;
-              results[questionIdx].aiReason = aiResult.reason;
-              if (aiResult.isCorrect) correctCount++;
-            }
-          });
-          aiSuccess = true;
-        }
-      } catch (error) {
-        console.warn('AI semantic grading failed, falling back to local matching:', error);
-      }
-
-      // AI 실패 시 로컬 텍스트 매칭 fallback
-      if (!aiSuccess) {
-        results.forEach(result => {
-          if (result.studentAnswer !== "(미작성)" && result.studentAnswer !== "(판독불가)") {
-            result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer);
-            if (result.isCorrect) correctCount++;
+      // standard/lenient 모드: 로컬 정확 일치 우선, 나머지만 AI 시멘틱 채점.
+      // 텍스트적으로 명백한 일치는 LLM 비결정성 영향을 받지 않도록 결정론적으로 처리한다.
+      const aiNeededQuestions: typeof aiQuestions = [];
+      aiQuestions.forEach(q => {
+        if (isAnswerCorrect(q.studentAnswer, q.correctAnswer)) {
+          const questionIdx = results.findIndex(r => r.questionNumber === parseInt(q.id));
+          if (questionIdx !== -1) {
+            results[questionIdx].isCorrect = true;
+            results[questionIdx].aiReason = '정답 일치';
+            correctCount++;
           }
-        });
+        } else {
+          aiNeededQuestions.push(q);
+        }
+      });
+
+      let aiSuccess = aiNeededQuestions.length === 0;
+
+      if (aiNeededQuestions.length > 0) {
+        try {
+          const systemPrompt = getGradingPrompt(strictness);
+          const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
+            body: { questions: aiNeededQuestions, systemPrompt }
+          });
+
+          if (!error && data?.success) {
+            const aiResults: { id: string; isCorrect: boolean; reason: string }[] = data.data;
+            aiResults.forEach(aiResult => {
+              const questionIdx = results.findIndex(r => r.questionNumber === parseInt(aiResult.id));
+              if (questionIdx !== -1) {
+                results[questionIdx].isCorrect = aiResult.isCorrect;
+                results[questionIdx].aiReason = aiResult.reason;
+                if (aiResult.isCorrect) correctCount++;
+              }
+            });
+            aiSuccess = true;
+          }
+        } catch (error) {
+          console.warn('AI semantic grading failed, falling back to local matching:', error);
+        }
+
+        // AI 실패 시 로컬 매칭은 이미 false로 판정된 항목이라 그대로 false 유지
       }
     }
   }
@@ -222,29 +231,34 @@ export async function recalculateAfterEdit(
       // strict 모드: AI 호출 없이 로컬 텍스트 비교
       newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
     } else {
-      // standard/lenient 모드: AI 시멘틱 채점
-      try {
-        const systemPrompt = getGradingPrompt(strictness);
-        const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
-          body: {
-            questions: [{
-              id: String(editedQuestionNumber),
-              studentAnswer: newStudentAnswer,
-              correctAnswer: editedResult.correctAnswer,
-              question: editedResult.question,
-            }],
-            systemPrompt,
-          }
-        });
+      // standard/lenient 모드: 로컬 정확 일치 우선, 안 맞으면 AI 시멘틱 채점
+      if (isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer)) {
+        newIsCorrect = true;
+        aiReason = '정답 일치';
+      } else {
+        try {
+          const systemPrompt = getGradingPrompt(strictness);
+          const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
+            body: {
+              questions: [{
+                id: String(editedQuestionNumber),
+                studentAnswer: newStudentAnswer,
+                correctAnswer: editedResult.correctAnswer,
+                question: editedResult.question,
+              }],
+              systemPrompt,
+            }
+          });
 
-        if (!error && data?.success && data.data?.[0]) {
-          newIsCorrect = data.data[0].isCorrect;
-          aiReason = data.data[0].reason;
-        } else {
-          newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+          if (!error && data?.success && data.data?.[0]) {
+            newIsCorrect = data.data[0].isCorrect;
+            aiReason = data.data[0].reason;
+          } else {
+            newIsCorrect = false;
+          }
+        } catch {
+          newIsCorrect = false;
         }
-      } catch {
-        newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
       }
     }
   }

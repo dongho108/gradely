@@ -24,6 +24,22 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { getGradingPrompt } from '../lib/grading-prompts'
 import { SNAPSHOT_RESULTS as SNAPSHOT_1 } from '../lib/__tests__/fixtures/regrade-snapshot'
+
+// grading-service의 isAnswerCorrect를 그대로 옮긴 로컬 매칭 (실제 채점 흐름과 동일하게 검증)
+function normalizeText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[()[\]{}]/g, '')
+}
+function isAnswerCorrect(studentAnswer: string, correctAnswer: string): boolean {
+  const normStudent = normalizeText(studentAnswer)
+  const possibleAnswers = correctAnswer.includes('|||')
+    ? correctAnswer.split('|||').map(a => normalizeText(a))
+    : correctAnswer.split(/[\\/|,]/).map(a => normalizeText(a))
+  return possibleAnswers.some(ans => ans === normStudent && ans !== '')
+}
 import { SNAPSHOT_RESULTS_2, SHOULD_FLIP_TO_CORRECT_2, SHOULD_STAY_INCORRECT_2 } from '../lib/__tests__/fixtures/regrade-snapshot-2'
 import { SNAPSHOT_RESULTS_3, SHOULD_FLIP_TO_CORRECT_3, SHOULD_STAY_INCORRECT_3 } from '../lib/__tests__/fixtures/regrade-snapshot-3'
 
@@ -73,16 +89,27 @@ interface AIResult {
 async function gradeOnce(): Promise<AIResult[]> {
   const url = `${SUPABASE_URL}/functions/v1/verify-semantic-grading-v2`
   const systemPrompt = getGradingPrompt('lenient')
-  const body = {
-    questions: SNAPSHOT_RESULTS.map(item => ({
-      id: String(item.questionNumber),
-      studentAnswer: item.studentAnswer,
-      correctAnswer: item.correctAnswer,
-      question: item.question,
-    })),
-    systemPrompt,
+
+  // grading-service와 동일하게 로컬 정확 일치 우선 처리: 매칭되는 항목은 AI 호출 없이 정답으로 결정
+  const localMatched: AIResult[] = []
+  const aiNeeded: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] = []
+  for (const item of SNAPSHOT_RESULTS) {
+    if (isAnswerCorrect(item.studentAnswer, item.correctAnswer)) {
+      localMatched.push({ id: String(item.questionNumber), isCorrect: true, reason: '정답 일치' })
+    } else {
+      aiNeeded.push({
+        id: String(item.questionNumber),
+        studentAnswer: item.studentAnswer,
+        correctAnswer: item.correctAnswer,
+        question: item.question,
+      })
+    }
   }
 
+  // 모두 로컬 매칭이면 AI 호출 생략
+  if (aiNeeded.length === 0) return localMatched
+
+  const body = { questions: aiNeeded, systemPrompt }
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -99,7 +126,7 @@ async function gradeOnce(): Promise<AIResult[]> {
   }
   const json = await res.json() as { success: boolean; data?: AIResult[]; error?: string }
   if (!json.success || !json.data) throw new Error(`API error: ${json.error}`)
-  return json.data
+  return [...localMatched, ...json.data]
 }
 
 interface DiffEntry {
