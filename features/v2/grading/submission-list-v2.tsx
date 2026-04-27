@@ -1,8 +1,9 @@
 "use client";
 
-import { ScanLine, FileText, Trash2 } from "lucide-react";
+import { FileText, Trash2 } from "lucide-react";
 import { useTabStore } from "@/store/use-tab-store";
 import type { StudentSubmission } from "@/types/grading";
+import { ScanFooterV2 } from "./scan-footer-v2";
 
 export type ResultView =
   | { kind: "answer-key" }
@@ -14,7 +15,6 @@ interface SubmissionListV2Props {
   view: ResultView;
   onSelectAnswerKey: () => void;
   onSelectStudent: (submission: StudentSubmission) => void;
-  onScanClick: () => void;
 }
 
 function statusColor(pct: number): string {
@@ -28,7 +28,6 @@ export function SubmissionListV2({
   view,
   onSelectAnswerKey,
   onSelectStudent,
-  onScanClick,
 }: SubmissionListV2Props) {
   const tabs = useTabStore((s) => s.tabs);
   const submissions = useTabStore((s) => s.submissions);
@@ -158,16 +157,7 @@ export function SubmissionListV2({
         )}
       </div>
 
-      <div className="g-students-foot">
-        <button
-          type="button"
-          className="g-btn g-btn-md g-btn-primary g-btn-block"
-          onClick={onScanClick}
-        >
-          <ScanLine size={15} />
-          답안지 스캔
-        </button>
-      </div>
+      <ScanFooterV2 tabId={tabId} />
     </section>
   );
 }

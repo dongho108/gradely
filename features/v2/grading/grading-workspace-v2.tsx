@@ -18,7 +18,6 @@ import {
 } from "@/lib/grading-service";
 import { filesToImages } from "@/lib/file-utils";
 import { resolveFile } from "@/lib/file-resolver";
-import { uploadAndTrackSubmission } from "@/lib/auto-save";
 import type { GradingStrictness, StudentSubmission } from "@/types/grading";
 
 const PDFViewer = dynamic(
@@ -49,7 +48,6 @@ export function GradingWorkspaceV2({ onScanClick }: GradingWorkspaceV2Props) {
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const submissions = useTabStore((s) => s.submissions);
-  const addSubmission = useTabStore((s) => s.addSubmission);
   const updateSubmissionGrade = useTabStore((s) => s.updateSubmissionGrade);
   const setSubmissionStatus = useTabStore((s) => s.setSubmissionStatus);
   const user = useAuthStore((s) => s.user);
@@ -228,23 +226,6 @@ export function GradingWorkspaceV2({ onScanClick }: GradingWorkspaceV2Props) {
     });
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleAddSubmissions = async (files: FileList | File[]) => {
-    if (!tabId || !files) return;
-    const allowed = ["application/pdf", "image/jpeg", "image/png"];
-    const ids: string[] = [];
-    for (const file of Array.from(files)) {
-      if (!allowed.includes(file.type)) continue;
-      const id = Math.random().toString(36).substring(2, 9);
-      addSubmission(tabId, file, id);
-      setSubmissionStatus(tabId, id, "queued");
-      ids.push(id);
-      if (user?.id) uploadAndTrackSubmission(user.id, tabId, id, file);
-    }
-    processingRef.current.queue.push(...ids);
-    drain();
-  };
-
   if (!tabId || !activeTab) {
     return (
       <div className="g-empty">
@@ -317,25 +298,6 @@ export function GradingWorkspaceV2({ onScanClick }: GradingWorkspaceV2Props) {
         view={view}
         onSelectAnswerKey={() => setView({ kind: "answer-key" })}
         onSelectStudent={handleSelectStudent}
-        onScanClick={() => {
-          if (!isAuthenticated && tabSubs.length >= 1) {
-            setShowLogin(true);
-            return;
-          }
-          if (!fileInputRef.current) return;
-          fileInputRef.current.click();
-        }}
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="application/pdf, image/jpeg, image/png"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          if (e.target.files) handleAddSubmissions(e.target.files);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-        }}
       />
 
       {pdfViewerSubmission ? (
