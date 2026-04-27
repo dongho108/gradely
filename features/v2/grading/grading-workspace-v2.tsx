@@ -376,9 +376,9 @@ export function GradingWorkspaceV2({ onScanClick }: GradingWorkspaceV2Props) {
           onCorrectToggle={handleCorrectToggle}
           onStudentNameEdit={handleStudentNameEdit}
           onReportIssue={
-            currentSubmission.status === "graded" && currentSubmission.results && user
+            currentSubmission.status === "graded" && currentSubmission.results
               ? () => {
-                  if (!isAuthenticated) {
+                  if (!isAuthenticated || !user) {
                     setShowLogin(true);
                     return;
                   }
