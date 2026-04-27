@@ -618,6 +618,49 @@ export class ScannerService {
   }
 
   /**
+   * 단면(feeder) 모드 스캔 결과에서 듀플렉스 스캐너의 빈 뒷면 아티팩트를 제거한다.
+   *
+   * Canon imageFORMULA R40 등 일부 듀플렉스 ADF 스캐너는 TWAIN 드라이버 기본값이
+   * 듀플렉스라 NAPS2가 `--source feeder` (단면)을 보내도 무시하고 양면 스캔을
+   * 수행하여 빈 뒷면 페이지를 출력한다. 이 빈 페이지는 정상 스캔과 비교해
+   * 파일 크기가 극단적으로 작다 (300dpi gray Letter 기준 ~70-80KB vs 정상 300KB+).
+   *
+   * 절대값(<80KB)과 상대값(최대 페이지 대비 <30%)을 모두 만족하는 페이지만
+   * 제거하여 정상적인 sparse 답안지를 잘못 거르지 않도록 한다.
+   *
+   * 듀플렉스(--source duplex)나 1장 스캔 결과에는 적용하지 않는다.
+   */
+  private filterBlankDuplexBacksides(files: string[], source: string): string[] {
+    if (source !== 'feeder' || files.length < 2) return files;
+
+    const sizes = files.map(f => {
+      try { return fs.statSync(f).size; } catch { return 0; }
+    });
+    const maxSize = Math.max(...sizes);
+
+    // 가장 큰 파일이 충분히 작으면 (예: 모두 빈 페이지) 필터링하지 않는다.
+    if (maxSize < 100 * 1024) return files;
+
+    const ABS_THRESHOLD = 80 * 1024;
+    const REL_THRESHOLD = 0.3;
+
+    const kept: string[] = [];
+    files.forEach((f, i) => {
+      const size = sizes[i];
+      if (size < ABS_THRESHOLD && size < maxSize * REL_THRESHOLD) {
+        console.log(
+          `[Scanner] scan: 빈 페이지(듀플렉스 뒷면 추정) 제외:`,
+          path.basename(f), `(${size} bytes, max=${maxSize})`
+        );
+        try { fs.unlinkSync(f); } catch { /* ignore */ }
+      } else {
+        kept.push(f);
+      }
+    });
+    return kept;
+  }
+
+  /**
    * 스캔을 실행하고 임시 파일 경로를 반환한다.
    */
   /**
@@ -813,8 +856,11 @@ export class ScannerService {
         // 권한 에러 또는 타임아웃은 fallback하지 않음
         if (/권한|UnauthorizedAccessException|Access.*denied/i.test(errMsg)) throw firstError;
         if (/timed out/i.test(errMsg)) throw firstError;
-        // ADF 용지 없음은 드라이버 문제가 아니므로 fallback하지 않음
-        if (/NoMedia|No scanned pages|no.?more.?pages|feeder.?empty|out of paper|no paper|adf.?empty/i.test(errMsg)) throw firstError;
+        // ADF 용지 없음은 드라이버 문제가 아니므로 fallback하지 않음.
+        // WIA로 fallback 시 평판으로 자동 전환되어 의도치 않은 추가 페이지가
+        // 만들어질 수 있다 (예: 2장 스캔 후 3번째 페이지 생성 버그).
+        // UI 훅(use-tab-scan, use-batch-scan)의 noMorePagesPatterns와 동일한 집합을 유지한다.
+        if (/no.?more.?pages|no documents|feeder.?empty|feeder is empty|out of paper|no paper|adf.?empty|NoMedia|No scanned pages/i.test(errMsg)) throw firstError;
 
         // 대체 드라이버로 재시도
         const altDriver = driver === 'twain' ? 'wia' : 'twain';
@@ -825,6 +871,7 @@ export class ScannerService {
         const altArgs = this.buildScanArgs(altTempPath, altDriver, dpi, source, colorMode, options.device);
 
         outputFiles = await this.execScanProcess(naps2Path, altArgs, altTempPath);
+        outputFiles = this.filterBlankDuplexBacksides(outputFiles, source);
         this.lastSuccessfulDriver = altDriver;
 
         const mimeType = FORMAT_TO_MIME[format] || 'application/octet-stream';
@@ -836,6 +883,7 @@ export class ScannerService {
         };
       }
 
+      outputFiles = this.filterBlankDuplexBacksides(outputFiles, source);
       this.lastSuccessfulDriver = driver;
       const mimeType = FORMAT_TO_MIME[format] || 'application/octet-stream';
       console.log('[Scanner] scan: 성공! 파일:', outputFiles.length, '개');

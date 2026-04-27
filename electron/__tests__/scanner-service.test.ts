@@ -598,6 +598,49 @@ describe('ScannerService - 단위 테스트', () => {
       expect(scanCalls).toHaveLength(1);
     });
 
+    // 회귀: NAPS2가 stdout으로 출력하는 피더 빈 용지 메시지에서 WIA fallback이
+    // 발동하면, WIA가 평판으로 자동 전환되어 의도치 않은 추가 페이지를 만들어낸다
+    // (예: 2장 스캔 후 3번째 페이지가 생기는 버그).
+    it.each([
+      'No documents in feeder',
+      'no documents were detected',
+      'No scanned pages',
+      'NoMedia',
+      'feeder empty',
+      'feeder is empty',
+      'out of paper',
+      'no paper',
+      'adf empty',
+    ])('피더 빈 용지 메시지 (%s) 시 WIA fallback하지 않는다', async (stdoutMessage) => {
+      vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+      const mockExecFile = vi.mocked(execFile);
+
+      mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+        const cmd = _cmd as string;
+        if (cmd === 'powershell') {
+          (callback as Function)(null, '[{"FriendlyName":"Test Scanner"}]', '');
+          return {} as any;
+        }
+        const args = _args as string[];
+        if (args.includes('--listdevices')) {
+          (callback as Function)(null, 'Test Scanner\n', '');
+          return {} as any;
+        }
+        // NAPS2는 피더 빈 용지 에러를 stderr가 아닌 stdout으로 출력한다
+        (callback as Function)(new Error('Command failed'), stdoutMessage, '');
+        return {} as any;
+      });
+
+      await expect(service.scan({ format: 'jpeg' })).rejects.toThrow();
+      const scanCalls = mockExecFile.mock.calls.filter(
+        call => !(call[1] as string[]).includes('--listdevices')
+          && (_cmd => _cmd !== 'powershell')(call[0])
+      );
+      expect(scanCalls).toHaveLength(1);
+    });
+
     it('listDevices 후 scan 시 캐시된 디바이스명을 --device로 전달한다', async () => {
       vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
@@ -703,6 +746,98 @@ describe('ScannerService - 단위 테스트', () => {
       });
 
       await expect(service.scan({ driver: 'wia', format: 'jpeg' })).rejects.toThrow('No device was specified');
+    });
+  });
+
+  // 듀플렉스 ADF 스캐너 (Canon imageFORMULA R40 등)가 --source feeder를
+  // 무시하고 양면으로 스캔하여 빈 뒷면 페이지를 끼워 넣는 하드웨어 동작을
+  // 앱 레벨에서 보정한다.
+  describe('filterBlankDuplexBacksides() (private)', () => {
+    const callFilter = (files: string[], source: string): string[] =>
+      (service as unknown as { filterBlankDuplexBacksides: (f: string[], s: string) => string[] })
+        .filterBlankDuplexBacksides(files, source);
+
+    it('실제 버그 재현: 2장 입력 → 3개 파일 (중간 빈 페이지) 시 2개 반환', () => {
+      // Canon R40에서 실제로 관찰된 파일 크기:
+      // 정상 페이지 ~334KB, 빈 뒷면 ~77KB, 정상 페이지 ~339KB
+      const realSizes = [334867, 76620, 338666];
+      vi.spyOn(fs, 'statSync').mockImplementation((p: any) => {
+        const idx = parseInt(String(p).match(/\.(\d+)\.jpg$/)?.[1] ?? '0') - 1;
+        return { size: realSizes[idx] ?? 0 } as any;
+      });
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+      const files = [
+        '/tmp/scan/uuid.1.jpg',
+        '/tmp/scan/uuid.2.jpg',
+        '/tmp/scan/uuid.3.jpg',
+      ];
+      const result = callFilter(files, 'feeder');
+
+      expect(result).toEqual(['/tmp/scan/uuid.1.jpg', '/tmp/scan/uuid.3.jpg']);
+      expect(unlinkSpy).toHaveBeenCalledWith('/tmp/scan/uuid.2.jpg');
+    });
+
+    it('duplex 모드에서는 필터링하지 않는다 (사용자가 의도적으로 양면 스캔)', () => {
+      vi.spyOn(fs, 'statSync').mockReturnValue({ size: 76620 } as any);
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+      const files = ['/tmp/scan/uuid.1.jpg', '/tmp/scan/uuid.2.jpg'];
+      const result = callFilter(files, 'duplex');
+
+      expect(result).toEqual(files);
+      expect(unlinkSpy).not.toHaveBeenCalled();
+    });
+
+    it('1개 파일이면 그대로 반환한다', () => {
+      const files = ['/tmp/scan/only.jpg'];
+      const result = callFilter(files, 'feeder');
+      expect(result).toEqual(files);
+    });
+
+    it('모든 페이지가 비슷하게 작으면 그대로 반환한다 (max < 100KB)', () => {
+      // 모두 빈 페이지일 가능성 — 잘못 다 지워버리지 않도록 보호
+      vi.spyOn(fs, 'statSync').mockImplementation((p: any) => {
+        const idx = parseInt(String(p).match(/\.(\d+)\.jpg$/)?.[1] ?? '0') - 1;
+        return { size: [50000, 60000, 55000][idx] ?? 0 } as any;
+      });
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+      const files = [
+        '/tmp/scan/uuid.1.jpg',
+        '/tmp/scan/uuid.2.jpg',
+        '/tmp/scan/uuid.3.jpg',
+      ];
+      const result = callFilter(files, 'feeder');
+
+      expect(result).toEqual(files);
+      expect(unlinkSpy).not.toHaveBeenCalled();
+    });
+
+    it('80KB 이상은 max 대비 작아도 보존한다 (정상적인 sparse 답안지)', () => {
+      // 90KB는 정상적인 sparse 답안지일 수 있으므로 거르지 않는다
+      vi.spyOn(fs, 'statSync').mockImplementation((p: any) => {
+        const idx = parseInt(String(p).match(/\.(\d+)\.jpg$/)?.[1] ?? '0') - 1;
+        return { size: [90000, 400000][idx] ?? 0 } as any;
+      });
+
+      const files = ['/tmp/scan/uuid.1.jpg', '/tmp/scan/uuid.2.jpg'];
+      const result = callFilter(files, 'feeder');
+
+      expect(result).toEqual(files);
+    });
+
+    it('절대 크기는 작아도 max 대비 30% 이상이면 보존한다', () => {
+      // 70KB지만 max(150KB) 대비 47%이면 빈 페이지가 아닐 수 있으므로 보존
+      vi.spyOn(fs, 'statSync').mockImplementation((p: any) => {
+        const idx = parseInt(String(p).match(/\.(\d+)\.jpg$/)?.[1] ?? '0') - 1;
+        return { size: [70000, 150000][idx] ?? 0 } as any;
+      });
+
+      const files = ['/tmp/scan/uuid.1.jpg', '/tmp/scan/uuid.2.jpg'];
+      const result = callFilter(files, 'feeder');
+
+      expect(result).toEqual(files);
     });
   });
 
