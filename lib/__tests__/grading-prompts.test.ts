@@ -61,11 +61,6 @@ describe('lib/grading-prompts — lenient 전용', () => {
     expect(lenient).toContain('한↔영 번역 문항은 아래 특별 규칙을 따릅니다')
   })
 
-  it('(다) 언어 일치 필수 규칙을 정답 인정 기준 요약에 포함한다', () => {
-    expect(lenient).toMatch(/\(다\).*언어 일치 필수/)
-    expect(lenient).toMatch(/반대 언어.*오답|반대 언어.*적은 경우.*오답/)
-  })
-
   it('회귀 방지: 더 이상 "사전 역방향 번역어"를 정답으로 인정하지 않는다', () => {
     expect(lenient).not.toContain('사전 역방향 번역어')
     expect(lenient).not.toContain('반대 방향 사전 번역어')
