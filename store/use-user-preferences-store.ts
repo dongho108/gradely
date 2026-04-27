@@ -4,17 +4,7 @@ import type { GradingStrictness } from '@/types/grading';
 
 export type UiVariant = 'classic' | 'wds';
 
-const UI_VARIANT_KEY = 'gradely.uiVariant';
-
-function readPersistedVariant(): UiVariant {
-  if (typeof window === 'undefined') return 'classic';
-  try {
-    const value = window.localStorage.getItem(UI_VARIANT_KEY);
-    return value === 'wds' ? 'wds' : 'classic';
-  } catch {
-    return 'classic';
-  }
-}
+export const UI_VARIANT_KEY = 'gradely.uiVariant';
 
 function persistVariant(variant: UiVariant) {
   if (typeof window === 'undefined') return;
@@ -32,6 +22,7 @@ interface UserPreferencesState {
 
   setDefaultGradingStrictness: (strictness: GradingStrictness) => void;
   setUiVariant: (variant: UiVariant) => void;
+  hydrateUiVariant: () => void;
   loadPreferences: (userId: string) => Promise<void>;
   savePreferences: (userId: string) => Promise<void>;
 }
@@ -39,13 +30,23 @@ interface UserPreferencesState {
 export const useUserPreferencesStore = create<UserPreferencesState>((set, get) => ({
   defaultGradingStrictness: 'standard',
   isLoaded: false,
-  uiVariant: readPersistedVariant(),
+  uiVariant: 'classic',
 
   setDefaultGradingStrictness: (strictness) => set({ defaultGradingStrictness: strictness }),
 
   setUiVariant: (variant) => {
     persistVariant(variant);
     set({ uiVariant: variant });
+  },
+
+  hydrateUiVariant: () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const value = window.localStorage.getItem(UI_VARIANT_KEY);
+      if (value === 'wds') set({ uiVariant: 'wds' });
+    } catch {
+      // ignore privacy errors
+    }
   },
 
   loadPreferences: async (userId) => {

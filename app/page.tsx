@@ -87,10 +87,20 @@ if (typeof window !== 'undefined') {
 
 export default function Home() {
   const uiVariant = useUserPreferencesStore((s) => s.uiVariant);
-  if (uiVariant === "wds") {
-    return <AppShellV2 />;
+  const hydrateUiVariant = useUserPreferencesStore((s) => s.hydrateUiVariant);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    hydrateUiVariant();
+    setMounted(true);
+  }, [hydrateUiVariant]);
+
+  // SSR + 첫 클라이언트 렌더는 항상 'classic'으로 일치 (hydration mismatch 방지).
+  // 마운트 후 localStorage에서 변형을 읽어 'wds'면 v2로 전환.
+  if (!mounted || uiVariant !== "wds") {
+    return <ClassicHome />;
   }
-  return <ClassicHome />;
+  return <AppShellV2 />;
 }
 
 function ClassicHome() {
