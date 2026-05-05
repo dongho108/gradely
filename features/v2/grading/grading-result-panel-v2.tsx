@@ -1,8 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Eye, Filter, Flag, Loader2, Pencil, Sparkles, X } from "lucide-react";
-import type { StudentSubmission, GradingStrictness } from "@/types/grading";
+import {
+  ChevronDown,
+  Eye,
+  Filter,
+  Flag,
+  Grid3x3,
+  List,
+  Loader2,
+  Pencil,
+  Sparkles,
+  X,
+} from "lucide-react";
+import type { QuestionResult, StudentSubmission, GradingStrictness } from "@/types/grading";
 import { useTabStore } from "@/store/use-tab-store";
 import { useUserPreferencesStore } from "@/store/use-user-preferences-store";
 
@@ -47,6 +58,8 @@ export function GradingResultPanelV2({
   const tabs = useTabStore((s) => s.tabs);
   const tab = tabs.find((t) => t.id === tabId);
   const userDefault = useUserPreferencesStore((s) => s.defaultGradingStrictness);
+  const resultViewMode = useUserPreferencesStore((s) => s.resultViewMode);
+  const setResultViewMode = useUserPreferencesStore((s) => s.setResultViewMode);
   const effectiveStrictness: GradingStrictness =
     tab?.gradingStrictness ?? userDefault ?? "standard";
   const currentMode =
@@ -123,6 +136,132 @@ export function GradingResultPanelV2({
   const visible = wrongOnly ? results.filter((r) => !r.isCorrect) : results;
 
   const isProcessing = submission.status !== "graded";
+
+  const checkSvg = (size: number) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8l3 3 7-7" />
+    </svg>
+  );
+
+  const renderOX = (
+    r: QuestionResult,
+    isPending: boolean,
+    size: number,
+    fontSize: number,
+  ) => {
+    if (isPending) {
+      return (
+        <span
+          className="g-ox"
+          style={{
+            width: size,
+            height: size,
+            background: "var(--wds-cool-95)",
+            color: "var(--wds-label-alternative)",
+          }}
+          title="채점 중..."
+        >
+          <Loader2 size={Math.round(fontSize)} className="animate-spin" />
+        </span>
+      );
+    }
+    if (onCorrectToggle) {
+      return (
+        <button
+          type="button"
+          className={`g-ox ${r.isCorrect ? "correct" : "wrong"}`}
+          style={{
+            width: size,
+            height: size,
+            fontSize,
+            border: 0,
+            cursor: "pointer",
+          }}
+          onClick={() => onCorrectToggle(r.questionNumber, !r.isCorrect)}
+          title={r.isCorrect ? "클릭하여 오답으로 변경" : "클릭하여 정답으로 변경"}
+        >
+          {r.isCorrect ? checkSvg(Math.round(fontSize)) : <X size={Math.round(fontSize)} />}
+        </button>
+      );
+    }
+    return (
+      <span
+        className={`g-ox ${r.isCorrect ? "correct" : "wrong"}`}
+        style={{ width: size, height: size, fontSize }}
+      >
+        {r.isCorrect ? checkSvg(Math.round(fontSize)) : <X size={Math.round(fontSize)} />}
+      </span>
+    );
+  };
+
+  const renderStudentAnswerCell = (r: QuestionResult) => {
+    const pending = pendingEdits[r.questionNumber];
+    const isPending = pending !== undefined;
+    if (editingQ === r.questionNumber) {
+      return (
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmEditAnswer();
+            else if (e.key === "Escape") cancelEditAnswer();
+          }}
+          onBlur={confirmEditAnswer}
+          autoFocus
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            border: "1px solid var(--wds-primary)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            outline: "none",
+            background: "white",
+            color: "var(--wds-label-strong)",
+            fontFamily: "inherit",
+            minWidth: 0,
+            width: "100%",
+          }}
+        />
+      );
+    }
+    return (
+      <span
+        className={`val ${r.isCorrect ? "correct" : "wrong"}`}
+        onClick={() =>
+          !isPending && startEditAnswer(r.questionNumber, r.studentAnswer ?? "")
+        }
+        style={{
+          cursor: onAnswerEdit && !isPending ? "pointer" : "default",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          color: isPending ? "var(--wds-label-neutral)" : undefined,
+        }}
+        title={
+          isPending
+            ? "채점 중..."
+            : onAnswerEdit
+              ? "클릭하여 답안 수정"
+              : undefined
+        }
+      >
+        {r.isEdited && !isPending && (
+          <Pencil size={10} style={{ color: "var(--g-warn)" }} />
+        )}
+        {isPending ? pending : r.studentAnswer || "— 미응답"}
+      </span>
+    );
+  };
 
   return (
     <section className="g-result">
@@ -365,6 +504,34 @@ export function GradingResultPanelV2({
               </span>
             </div>
             <div className="g-result-toolbar-right">
+              <div
+                className="g-seg g-seg-sm"
+                role="tablist"
+                aria-label="보기 방식"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  className={`g-seg-btn ${resultViewMode === "card" ? "is-active" : ""}`}
+                  aria-pressed={resultViewMode === "card"}
+                  aria-selected={resultViewMode === "card"}
+                  onClick={() => setResultViewMode("card")}
+                >
+                  <Grid3x3 size={12} />
+                  카드
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`g-seg-btn ${resultViewMode === "list" ? "is-active" : ""}`}
+                  aria-pressed={resultViewMode === "list"}
+                  aria-selected={resultViewMode === "list"}
+                  onClick={() => setResultViewMode("list")}
+                >
+                  <List size={12} />
+                  리스트
+                </button>
+              </div>
               <button
                 type="button"
                 className={`g-filter-toggle ${wrongOnly ? "is-active" : ""}`}
@@ -390,149 +557,78 @@ export function GradingResultPanelV2({
               >
                 {wrongOnly ? "오답이 없어요" : "채점 결과가 없어요"}
               </div>
+            ) : resultViewMode === "list" ? (
+              <ul
+                className="g-qlist"
+                style={{
+                  gridTemplateRows: `repeat(${Math.ceil(visible.length / 2)}, auto)`,
+                }}
+              >
+                {visible.map((r) => {
+                  const pending = pendingEdits[r.questionNumber];
+                  const isPending = pending !== undefined;
+                  return (
+                    <li
+                      key={r.questionNumber}
+                      className={`g-qrow ${
+                        r.isCorrect || isPending ? "" : "is-wrong"
+                      }`}
+                      style={isPending ? { opacity: 0.7 } : undefined}
+                    >
+                      <div className="g-qrow-rail" aria-hidden="true" />
+                      <div className="g-qrow-num">
+                        <span className="n">
+                          {String(r.questionNumber).padStart(2, "0")}
+                        </span>
+                        {renderOX(r, isPending, 22, 11)}
+                      </div>
+                      <div className="g-qrow-body">
+                        {r.question && (
+                          <div className="g-qrow-q" title={r.question}>
+                            {r.question}
+                          </div>
+                        )}
+                        <div className="g-qrow-ans">
+                          <span className="lbl">학생</span>
+                          {renderStudentAnswerCell(r)}
+                          <span className="sep" aria-hidden="true">
+                            ·
+                          </span>
+                          <span className="lbl">정답</span>
+                          <span className="val">{r.correctAnswer}</span>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <div className="g-qgrid">
                 {visible.map((r) => {
                   const pending = pendingEdits[r.questionNumber];
                   const isPending = pending !== undefined;
                   return (
-                  <div
-                    key={r.questionNumber}
-                    className={`g-qcard ${r.isCorrect && !isPending ? "" : isPending ? "" : "is-wrong"}`}
-                    style={isPending ? { opacity: 0.7 } : undefined}
-                  >
-                    <div className="g-qcard-head">
-                      <span className="g-qcard-num">
-                        Q {String(r.questionNumber).padStart(2, "0")}
-                      </span>
-                      {isPending ? (
-                        <span
-                          className="g-ox"
-                          style={{
-                            width: 24,
-                            height: 24,
-                            background: "var(--wds-cool-95)",
-                            color: "var(--wds-label-alternative)",
-                          }}
-                          title="채점 중..."
-                        >
-                          <Loader2 size={12} className="animate-spin" />
+                    <div
+                      key={r.questionNumber}
+                      className={`g-qcard ${
+                        r.isCorrect || isPending ? "" : "is-wrong"
+                      }`}
+                      style={isPending ? { opacity: 0.7 } : undefined}
+                    >
+                      <div className="g-qcard-head">
+                        <span className="g-qcard-num">
+                          Q {String(r.questionNumber).padStart(2, "0")}
                         </span>
-                      ) : onCorrectToggle ? (
-                        <button
-                          type="button"
-                          className={`g-ox ${r.isCorrect ? "correct" : "wrong"}`}
-                          style={{
-                            width: 24,
-                            height: 24,
-                            fontSize: 12,
-                            border: 0,
-                            cursor: "pointer",
-                          }}
-                          onClick={() => onCorrectToggle(r.questionNumber, !r.isCorrect)}
-                          title={r.isCorrect ? "클릭하여 오답으로 변경" : "클릭하여 정답으로 변경"}
-                        >
-                          {r.isCorrect ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 8l3 3 7-7" />
-                            </svg>
-                          ) : (
-                            <X size={12} />
-                          )}
-                        </button>
-                      ) : (
-                        <span
-                          className={`g-ox ${r.isCorrect ? "correct" : "wrong"}`}
-                          style={{ width: 24, height: 24, fontSize: 12 }}
-                        >
-                          {r.isCorrect ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 8l3 3 7-7" />
-                            </svg>
-                          ) : (
-                            <X size={12} />
-                          )}
-                        </span>
-                      )}
+                        {renderOX(r, isPending, 24, 12)}
+                      </div>
+                      {r.question && <div className="g-qcard-q">{r.question}</div>}
+                      <div className="g-qcard-ans">
+                        <span className="lbl">학생</span>
+                        {renderStudentAnswerCell(r)}
+                        <span className="lbl">정답</span>
+                        <span className="val">{r.correctAnswer}</span>
+                      </div>
                     </div>
-                    {r.question && <div className="g-qcard-q">{r.question}</div>}
-                    <div className="g-qcard-ans">
-                      <span className="lbl">학생</span>
-                      {editingQ === r.questionNumber ? (
-                        <input
-                          type="text"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") confirmEditAnswer();
-                            else if (e.key === "Escape") cancelEditAnswer();
-                          }}
-                          onBlur={confirmEditAnswer}
-                          autoFocus
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            border: "1px solid var(--wds-primary)",
-                            borderRadius: 4,
-                            padding: "2px 6px",
-                            outline: "none",
-                            background: "white",
-                            color: "var(--wds-label-strong)",
-                            fontFamily: "inherit",
-                            minWidth: 0,
-                            width: "100%",
-                          }}
-                        />
-                      ) : (
-                        <span
-                          className={`val ${r.isCorrect ? "correct" : "wrong"}`}
-                          onClick={() =>
-                            !isPending &&
-                            startEditAnswer(r.questionNumber, r.studentAnswer ?? "")
-                          }
-                          style={{
-                            cursor: onAnswerEdit && !isPending ? "pointer" : "default",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            color: isPending ? "var(--wds-label-neutral)" : undefined,
-                          }}
-                          title={
-                            isPending
-                              ? "채점 중..."
-                              : onAnswerEdit
-                                ? "클릭하여 답안 수정"
-                                : undefined
-                          }
-                        >
-                          {r.isEdited && !isPending && (
-                            <Pencil size={10} style={{ color: "var(--g-warn)" }} />
-                          )}
-                          {isPending ? pending : r.studentAnswer || "— 미응답"}
-                        </span>
-                      )}
-                      <span className="lbl">정답</span>
-                      <span className="val">{r.correctAnswer}</span>
-                    </div>
-                  </div>
                   );
                 })}
               </div>

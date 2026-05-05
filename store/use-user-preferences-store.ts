@@ -3,8 +3,10 @@ import { supabase } from '@/lib/supabase';
 import type { GradingStrictness } from '@/types/grading';
 
 export type UiVariant = 'classic' | 'wds';
+export type ResultViewMode = 'card' | 'list';
 
 export const UI_VARIANT_KEY = 'gradely.uiVariant';
+export const RESULT_VIEW_MODE_KEY = 'gradely.resultViewMode';
 
 function persistVariant(variant: UiVariant) {
   if (typeof window === 'undefined') return;
@@ -15,14 +17,26 @@ function persistVariant(variant: UiVariant) {
   }
 }
 
+function persistResultViewMode(mode: ResultViewMode) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RESULT_VIEW_MODE_KEY, mode);
+  } catch {
+    // ignore quota / privacy errors
+  }
+}
+
 interface UserPreferencesState {
   defaultGradingStrictness: GradingStrictness;
   isLoaded: boolean;
   uiVariant: UiVariant;
+  resultViewMode: ResultViewMode;
 
   setDefaultGradingStrictness: (strictness: GradingStrictness) => void;
   setUiVariant: (variant: UiVariant) => void;
   hydrateUiVariant: () => void;
+  setResultViewMode: (mode: ResultViewMode) => void;
+  hydrateResultViewMode: () => void;
   loadPreferences: (userId: string) => Promise<void>;
   savePreferences: (userId: string) => Promise<void>;
 }
@@ -31,6 +45,7 @@ export const useUserPreferencesStore = create<UserPreferencesState>((set, get) =
   defaultGradingStrictness: 'standard',
   isLoaded: false,
   uiVariant: 'classic',
+  resultViewMode: 'card',
 
   setDefaultGradingStrictness: (strictness) => set({ defaultGradingStrictness: strictness }),
 
@@ -44,6 +59,21 @@ export const useUserPreferencesStore = create<UserPreferencesState>((set, get) =
     try {
       const value = window.localStorage.getItem(UI_VARIANT_KEY);
       if (value === 'wds') set({ uiVariant: 'wds' });
+    } catch {
+      // ignore privacy errors
+    }
+  },
+
+  setResultViewMode: (mode) => {
+    persistResultViewMode(mode);
+    set({ resultViewMode: mode });
+  },
+
+  hydrateResultViewMode: () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const value = window.localStorage.getItem(RESULT_VIEW_MODE_KEY);
+      if (value === 'list' || value === 'card') set({ resultViewMode: value });
     } catch {
       // ignore privacy errors
     }
