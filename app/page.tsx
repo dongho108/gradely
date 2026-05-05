@@ -88,12 +88,14 @@ if (typeof window !== 'undefined') {
 export default function Home() {
   const uiVariant = useUserPreferencesStore((s) => s.uiVariant);
   const hydrateUiVariant = useUserPreferencesStore((s) => s.hydrateUiVariant);
+  const hydrateResultViewMode = useUserPreferencesStore((s) => s.hydrateResultViewMode);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     hydrateUiVariant();
+    hydrateResultViewMode();
     setMounted(true);
-  }, [hydrateUiVariant]);
+  }, [hydrateUiVariant, hydrateResultViewMode]);
 
   // SSR + 첫 클라이언트 렌더는 빈 스켈레톤으로 통일해 hydration mismatch를
   // 막는다. ClassicHome을 첫 프레임에 마운트하면 Header의 auto-addTab 효과가

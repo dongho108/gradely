@@ -277,6 +277,8 @@
 .wds-theme .g-seg-btn { display:inline-flex; align-items:center; gap:5px; padding:var(--wds-sp-6) var(--wds-sp-12); font-size:0.75rem; line-height:1rem; font-weight:600; color:var(--wds-label-alternative); background:transparent; border:0; border-radius:var(--wds-radius-xs); cursor:pointer; font-family:inherit; }
 .wds-theme .g-seg-btn:hover { color:var(--wds-label-neutral); }
 .wds-theme .g-seg-btn.is-active { background:var(--wds-bg-elevated); color:var(--wds-primary); box-shadow:var(--wds-shadow-xs); }
+.wds-theme .g-seg.g-seg-sm { padding:2px; }
+.wds-theme .g-seg.g-seg-sm .g-seg-btn { padding:3px 8px; font-size:0.6875rem; gap:4px; height:22px; }
 
 /* ---------- Result pane ---------- */
 .wds-theme .g-result { flex:1; min-width:0; background:var(--wds-cool-99); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
@@ -311,6 +313,23 @@
 .wds-theme .g-qcard-ans .val { font-weight:600; color:var(--wds-label-normal); word-break:break-all; }
 .wds-theme .g-qcard-ans .val.wrong { color:var(--g-wrong); }
 .wds-theme .g-qcard-ans .val.correct { color:var(--g-correct); }
+
+/* ---------- List view ---------- */
+.wds-theme .g-qlist { list-style:none; margin:0; padding:12px 20px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); grid-auto-flow:column; gap:6px 10px; }
+.wds-theme .g-qrow { position:relative; display:grid; grid-template-columns:auto auto minmax(0, 1fr); align-items:center; gap:12px; padding:8px 12px 8px 16px; background:var(--wds-bg-elevated); border:1px solid var(--wds-line-solid); border-radius:var(--wds-radius-md); min-height:48px; overflow:hidden; }
+.wds-theme .g-qrow.is-wrong { border-color:var(--wds-red-60); background:var(--g-wrong-bg); }
+.wds-theme .g-qrow-rail { position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--wds-line-alternative); }
+.wds-theme .g-qrow.is-wrong .g-qrow-rail { background:var(--g-wrong); }
+.wds-theme .g-qrow-num { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.wds-theme .g-qrow-num .n { font-size:12px; font-weight:700; color:var(--wds-label-alternative); font-variant-numeric:tabular-nums; letter-spacing:.04em; min-width:22px; text-align:right; }
+.wds-theme .g-qrow-body { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.wds-theme .g-qrow-q { font-size:13px; font-weight:600; color:var(--wds-label-strong); line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wds-theme .g-qrow-ans { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; font-size:12px; line-height:1.3; white-space:nowrap; overflow:hidden; }
+.wds-theme .g-qrow-ans .lbl { color:var(--wds-label-alternative); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; flex-shrink:0; }
+.wds-theme .g-qrow-ans .val { font-weight:600; color:var(--wds-label-normal); overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wds-theme .g-qrow-ans .val.wrong { color:var(--g-wrong); }
+.wds-theme .g-qrow-ans .val.correct { color:var(--g-correct); }
+.wds-theme .g-qrow-ans .sep { color:var(--wds-line-normal); flex-shrink:0; padding:0 2px; }
 
 /* ---------- Modal ---------- */
 .wds-theme.g-modal-backdrop, .wds-theme .g-modal-backdrop { position:fixed; inset:0; z-index:100; background:var(--wds-material-dimmer); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; padding:var(--wds-sp-20); animation:wds-fade 160ms ease-out; }
