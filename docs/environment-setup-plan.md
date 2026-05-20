@@ -98,7 +98,7 @@ supabase secrets set GEMINI_API_KEY=<your-gemini-api-key>
 
 **Gemini API 키 발급**:
 - https://aistudio.google.com/apikey 에서 발급
-- 모델: `gemini-3.1-flash-lite-preview` 사용 중
+- 모델: `gemini-3.1-flash-lite` 사용 중
 
 ### 2-5. Edge Functions 배포 (필요 시)
 
