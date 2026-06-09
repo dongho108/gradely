@@ -92,3 +92,5 @@ next-env.d.ts
 # NAPS2 Portable (downloaded at build time)
 resources/naps2/
 
+public/opencv/
+.omc/
