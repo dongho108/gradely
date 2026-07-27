@@ -38,4 +38,4 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 ## Contributors
 
 - [dongho108](https://github.com/dongho108) — 개발
-- 00900070mmlm@sl-edu.com
+- [00900070mmlm] 00900070mmlm@sl-edu.com - 개발
