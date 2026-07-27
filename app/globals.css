@@ -18,6 +18,9 @@
   --primary: #0891B2;
   --secondary: #22D3EE;
   --cta: #22C55E;
+
+  --font-noto-sans-kr: "Noto Sans KR";
+  --font-fira-code: "Fira Code";
 }
 
 body {

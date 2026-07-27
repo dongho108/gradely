@@ -1,18 +1,5 @@
 import type { Metadata } from "next";
-import { Noto_Sans_KR, Fira_Code } from "next/font/google";
 import "./globals.css";
-
-const notoSansKR = Noto_Sans_KR({
-  variable: "--font-noto-sans-kr",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "700"],
-});
-
-const firaCode = Fira_Code({
-  variable: "--font-fira-code",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
 
 export const metadata: Metadata = {
   title: process.env.NODE_ENV === "production" ? "Gradely" : "Gradely (dev)",
@@ -29,9 +16,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body
-        className={`${notoSansKR.variable} ${firaCode.variable} antialiased bg-[#ECFEFF] text-[#164E63]`}
-      >
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Fira+Code:wght@400;500;600&display=swap"
+        />
+      </head>
+      <body className="antialiased bg-[#ECFEFF] text-[#164E63]">
         {children}
       </body>
     </html>
