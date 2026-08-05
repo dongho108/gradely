@@ -3,6 +3,14 @@ import { supabase } from './supabase';
 import { fileToImages } from './file-utils';
 import { MOCK_ANSWER_STRUCTURE, MOCK_STUDENT_EXAM_STRUCTURE } from './mock-data';
 import { getGradingPrompt } from './grading-prompts';
+import { parseCorrectAnswers } from './answer-candidates';
+import {
+  ensureVocabularyLoaded,
+  extractEnglishHeadword,
+  hasHangul,
+  isEnglishPhrase,
+  lookupMeanings,
+} from './vocab-dictionary';
 
 /**
  * Extracts answer structure from pre-converted base64 images.
@@ -74,15 +82,68 @@ function normalizeText(text: string): string {
 /**
  * Checks if a student's answer matches any of the possible correct answers.
  */
-export function isAnswerCorrect(studentAnswer: string, correctAnswer: string): boolean {
+export function isAnswerCorrect(
+  studentAnswer: string,
+  correctAnswer: string,
+  question?: string
+): boolean {
   const normStudent = normalizeText(studentAnswer);
-  
-  // 새 구분자(|||) 우선, 없으면 기존 구분자 사용 (하위호환)
-  const possibleAnswers = correctAnswer.includes('|||')
-    ? correctAnswer.split('|||').map(a => normalizeText(a))
-    : correctAnswer.split(/[\\/|,]/).map(a => normalizeText(a));
 
-  return possibleAnswers.some(ans => ans === normStudent && ans !== "");
+  // 정답지 한 칸에 담긴 여러 사전 의미를 모두 후보로 분해한다 (';' 구분·품사 태그·괄호 포함)
+  const candidates = parseCorrectAnswers(correctAnswer);
+
+  // 지문이 영단어면 단어장에 실린 다른 뜻도 정답 후보에 더한다
+  const headword = extractEnglishHeadword(question, correctAnswer);
+  if (headword) {
+    candidates.push(...lookupMeanings(headword));
+  }
+
+  if (candidates.map(a => normalizeText(a)).some(ans => ans === normStudent && ans !== "")) {
+    return true;
+  }
+
+  // 한→영 문항: 지문이 한국어 뜻이고 정답이 영단어인 경우,
+  // 학생이 쓴 다른 영단어도 그 단어의 단어장 뜻이 지문과 맞으면 정답으로 인정한다.
+  return matchesKoreanPromptViaVocabulary(studentAnswer, correctAnswer, question);
+}
+
+/**
+ * AI에 넘길 정답 문자열을 만든다.
+ *
+ * 정답지 원문의 뜻 + 단어장에 실린 같은 표제어의 뜻을 `|||`(복수 정답 구분자)로 합친다.
+ * 프롬프트가 `|||`를 복수 정답으로 해석하므로, AI도 단어장 뜻을 정답 기준으로 삼는다.
+ */
+export function buildAiCorrectAnswer(correctAnswer: string, question?: string): string {
+  const candidates = parseCorrectAnswers(correctAnswer);
+
+  const headword = extractEnglishHeadword(question, correctAnswer);
+  if (headword) {
+    candidates.push(...lookupMeanings(headword));
+  }
+
+  const unique = [...new Set(candidates.filter(c => c.trim() !== ''))];
+  return unique.length > 0 ? unique.join('|||') : correctAnswer;
+}
+
+/**
+ * 한→영 문항에서 학생이 쓴 영단어를 단어장에서 역조회한다.
+ * 그 단어의 뜻 중 하나가 지문(한국어)의 뜻과 일치하면 정답.
+ */
+function matchesKoreanPromptViaVocabulary(
+  studentAnswer: string,
+  correctAnswer: string,
+  question?: string
+): boolean {
+  if (!question || !hasHangul(question)) return false;
+  if (!isEnglishPhrase(correctAnswer)) return false;   // 정답이 영단어인 문항에서만
+  if (!isEnglishPhrase(studentAnswer)) return false;   // 학생도 영어로 답했을 때만
+
+  const studentMeanings = lookupMeanings(studentAnswer).map(m => normalizeText(m));
+  if (studentMeanings.length === 0) return false;
+
+  const promptMeanings = parseCorrectAnswers(question).map(m => normalizeText(m));
+
+  return promptMeanings.some(pm => pm !== "" && studentMeanings.includes(pm));
 }
 
 /**
@@ -95,6 +156,9 @@ export async function calculateGradingResult(
   studentExam: StudentExamStructure,
   strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
+  // 단어장 보조 사전 (실패해도 정답지 기준 채점은 그대로 진행된다)
+  await ensureVocabularyLoaded();
+
   const results: QuestionResult[] = [];
   const aiQuestions: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] = [];
 
@@ -136,7 +200,7 @@ export async function calculateGradingResult(
       // strict 모드: AI 호출 없이 로컬 텍스트 비교
       results.forEach(result => {
         if (result.studentAnswer !== "(미작성)" && result.studentAnswer !== "(판독불가)") {
-          result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer);
+          result.isCorrect = isAnswerCorrect(result.studentAnswer, result.correctAnswer, result.question);
           if (result.isCorrect) correctCount++;
         }
       });
@@ -145,7 +209,7 @@ export async function calculateGradingResult(
       // 텍스트적으로 명백한 일치는 LLM 비결정성 영향을 받지 않도록 결정론적으로 처리한다.
       const aiNeededQuestions: typeof aiQuestions = [];
       aiQuestions.forEach(q => {
-        if (isAnswerCorrect(q.studentAnswer, q.correctAnswer)) {
+        if (isAnswerCorrect(q.studentAnswer, q.correctAnswer, q.question)) {
           const questionIdx = results.findIndex(r => r.questionNumber === parseInt(q.id));
           if (questionIdx !== -1) {
             results[questionIdx].isCorrect = true;
@@ -162,8 +226,13 @@ export async function calculateGradingResult(
       if (aiNeededQuestions.length > 0) {
         try {
           const systemPrompt = getGradingPrompt(strictness);
+          // 단어장 뜻을 정답 후보로 합쳐서 보낸다 (results에 보관된 정답지 원문은 그대로 유지)
+          const payloadQuestions = aiNeededQuestions.map(q => ({
+            ...q,
+            correctAnswer: buildAiCorrectAnswer(q.correctAnswer, q.question),
+          }));
           const { data, error } = await supabase.functions.invoke('verify-semantic-grading-v2', {
-            body: { questions: aiNeededQuestions, systemPrompt }
+            body: { questions: payloadQuestions, systemPrompt }
           });
 
           if (!error && data?.success) {
@@ -222,6 +291,8 @@ export async function recalculateAfterEdit(
   studentName?: string,
   strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
+  await ensureVocabularyLoaded();
+
   const editedResult = results.find(r => r.questionNumber === editedQuestionNumber);
   let newIsCorrect = false;
   let aiReason: string | undefined;
@@ -229,10 +300,10 @@ export async function recalculateAfterEdit(
   if (editedResult && newStudentAnswer !== "(미작성)" && newStudentAnswer !== "(판독불가)") {
     if (strictness === 'strict') {
       // strict 모드: AI 호출 없이 로컬 텍스트 비교
-      newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer);
+      newIsCorrect = isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer, editedResult.question);
     } else {
       // standard/lenient 모드: 로컬 정확 일치 우선, 안 맞으면 AI 시멘틱 채점
-      if (isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer)) {
+      if (isAnswerCorrect(newStudentAnswer, editedResult.correctAnswer, editedResult.question)) {
         newIsCorrect = true;
         aiReason = '정답 일치';
       } else {
@@ -243,7 +314,7 @@ export async function recalculateAfterEdit(
               questions: [{
                 id: String(editedQuestionNumber),
                 studentAnswer: newStudentAnswer,
-                correctAnswer: editedResult.correctAnswer,
+                correctAnswer: buildAiCorrectAnswer(editedResult.correctAnswer, editedResult.question),
                 question: editedResult.question,
               }],
               systemPrompt,

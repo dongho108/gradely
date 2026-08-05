@@ -215,7 +215,8 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
     for (const q of payload.body.questions) {
       const snap = SNAPSHOT_RESULTS.find(r => String(r.questionNumber) === q.id)!
       expect(q.studentAnswer).toBe(snap.studentAnswer)
-      expect(q.correctAnswer).toBe(snap.correctAnswer)
+      // 정답지 원문의 뜻 + 단어장 뜻이 '|||'로 합쳐져 전달된다 (첫 항목은 정답지 원문 기준)
+      expect(q.correctAnswer.split('|||')).toContain(snap.correctAnswer.split(/[;,]/)[0].trim())
       expect(q.question).toBe(snap.question)
     }
   })
