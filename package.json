@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "naps2:download": "node scripts/download-naps2.mjs",
-    "vocab:build": "node scripts/build-vocabulary.mjs",
+    "vocab:seed": "node scripts/seed-vocabulary.mjs",
     "electron:compile": "node scripts/build-electron.mjs",
     "electron:dev": "npm run copy-opencv && npm run electron:compile && concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run copy-opencv && next build && npm run electron:compile && electron-builder",

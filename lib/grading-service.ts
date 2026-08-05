@@ -5,7 +5,7 @@ import { MOCK_ANSWER_STRUCTURE, MOCK_STUDENT_EXAM_STRUCTURE } from './mock-data'
 import { getGradingPrompt } from './grading-prompts';
 import { parseCorrectAnswers } from './answer-candidates';
 import {
-  ensureVocabularyLoaded,
+  preloadVocabulary,
   extractEnglishHeadword,
   hasHangul,
   isEnglishPhrase,
@@ -108,6 +108,37 @@ export function isAnswerCorrect(
 }
 
 /**
+ * 이번 채점에서 단어장 조회가 필요한 영어 표제어를 모은다.
+ *
+ * - 영→한 문항: 지문의 영단어 (정답 후보를 늘리는 데 쓴다)
+ * - 한→영 문항: 학생이 쓴 영단어 (역조회에 쓴다)
+ */
+function collectHeadwords(
+  answerKey: AnswerKeyStructure,
+  studentExam: StudentExamStructure
+): string[] {
+  const words: string[] = [];
+
+  for (const [qNum, answerKeyData] of Object.entries(answerKey.answers)) {
+    const headword = extractEnglishHeadword(answerKeyData.question, answerKeyData.text);
+    if (headword) words.push(headword);
+
+    const studentAnswer = studentExam.answers[qNum];
+    if (
+      studentAnswer &&
+      answerKeyData.question &&
+      hasHangul(answerKeyData.question) &&
+      isEnglishPhrase(answerKeyData.text) &&
+      isEnglishPhrase(studentAnswer)
+    ) {
+      words.push(studentAnswer);
+    }
+  }
+
+  return words;
+}
+
+/**
  * AI에 넘길 정답 문자열을 만든다.
  *
  * 정답지 원문의 뜻 + 단어장에 실린 같은 표제어의 뜻을 `|||`(복수 정답 구분자)로 합친다.
@@ -156,8 +187,8 @@ export async function calculateGradingResult(
   studentExam: StudentExamStructure,
   strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
-  // 단어장 보조 사전 (실패해도 정답지 기준 채점은 그대로 진행된다)
-  await ensureVocabularyLoaded();
+  // 이 채점에 필요한 표제어만 미리 받아둔다 (실패해도 정답지 기준 채점은 그대로 진행된다)
+  await preloadVocabulary(collectHeadwords(answerKey, studentExam));
 
   const results: QuestionResult[] = [];
   const aiQuestions: { id: string; studentAnswer: string; correctAnswer: string; question?: string }[] = [];
@@ -291,9 +322,22 @@ export async function recalculateAfterEdit(
   studentName?: string,
   strictness: GradingStrictness = 'standard'
 ): Promise<GradingResult> {
-  await ensureVocabularyLoaded();
-
   const editedResult = results.find(r => r.questionNumber === editedQuestionNumber);
+
+  if (editedResult) {
+    const headword = extractEnglishHeadword(editedResult.question, editedResult.correctAnswer);
+    const words = headword ? [headword] : [];
+    if (
+      editedResult.question &&
+      hasHangul(editedResult.question) &&
+      isEnglishPhrase(editedResult.correctAnswer) &&
+      isEnglishPhrase(newStudentAnswer)
+    ) {
+      words.push(newStudentAnswer);
+    }
+    await preloadVocabulary(words);
+  }
+
   let newIsCorrect = false;
   let aiReason: string | undefined;
 

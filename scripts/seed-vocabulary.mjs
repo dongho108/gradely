@@ -1,30 +1,65 @@
 #!/usr/bin/env node
 /**
- * 단어장 엑셀(.xlsx) → lib/data/vocabulary.json 변환기.
+ * 단어장 엑셀(.xlsx) → Supabase `vocabulary` 테이블 적재기.
  *
  * 채점 시 "정답지의 영단어가 단어장에 있으면 단어장에 실린 뜻도 정답으로 인정"하기 위한
- * 사전 데이터를 만든다. 런타임에 xlsx를 파싱하지 않도록 빌드 타임에 JSON으로 굽는다.
+ * 보조 사전 데이터를 넣는다. 앱은 채점에 필요한 표제어만 골라 조회한다
+ * (lib/vocab-dictionary.ts).
+ *
+ * 사전 준비:
+ *   1. supabase/migrations/20260805000000_create_vocabulary.sql 적용
+ *   2. .env.local 에 NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 설정
+ *      (쓰기는 RLS 로 막혀 있어 service_role 키가 필요하다)
  *
  * 사용법:
- *   node scripts/build-vocabulary.mjs "C:/path/SL PRIME 단어장 전체.xlsx" [시트명]
+ *   node scripts/seed-vocabulary.mjs "C:/path/SL PRIME 단어장 전체.xlsx" [시트명]
  *   (시트명 기본값: "단어 전체" — A열 영어, B열 한글 뜻)
  *
- * 의존성 없이 동작한다: xlsx 는 zip + XML 이므로 Node 내장 zlib 으로 직접 푼다.
+ * xlsx 파싱은 의존성 없이 동작한다: zip + XML 이므로 Node 내장 zlib 으로 직접 푼다.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { inflateRawSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_PATH = join(REPO_ROOT, 'lib', 'data', 'vocabulary.json');
+
+/** 한 번에 upsert 할 행 수 */
+const BATCH_SIZE = 1000;
 
 const xlsxPath = process.argv[2];
 const sheetName = process.argv[3] ?? '단어 전체';
 
 if (!xlsxPath) {
-  console.error('사용법: node scripts/build-vocabulary.mjs <단어장.xlsx> [시트명]');
+  console.error('사용법: node scripts/seed-vocabulary.mjs <단어장.xlsx> [시트명]');
+  process.exit(1);
+}
+
+/** .env.local 로드 (scripts/verify-report-reproduction.ts 와 같은 패턴) */
+function loadEnv() {
+  try {
+    const content = readFileSync(join(REPO_ROOT, '.env.local'), 'utf-8');
+    for (const line of content.split('\n')) {
+      const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  } catch {
+    // .env.local 이 없으면 환경변수만 사용
+  }
+}
+loadEnv();
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error(
+    'NEXT_PUBLIC_SUPABASE_URL 과 SUPABASE_SERVICE_ROLE_KEY 가 필요합니다 (.env.local 또는 환경변수).'
+  );
   process.exit(1);
 }
 
@@ -152,10 +187,31 @@ for (const [rowIndex, row] of rows.entries()) {
   }
 }
 
-mkdirSync(dirname(OUT_PATH), { recursive: true });
-writeFileSync(OUT_PATH, JSON.stringify(dictionary), 'utf8');
-
-const bytes = Buffer.byteLength(JSON.stringify(dictionary));
+const entries = Object.entries(dictionary);
 console.log(`시트 "${sheetName}" 에서 ${rows.length - 1}행 처리`);
-console.log(`표제어 ${Object.keys(dictionary).length}개 저장 (건너뜀 ${skipped}행)`);
-console.log(`→ ${OUT_PATH} (${(bytes / 1024 / 1024).toFixed(2)} MB)`);
+console.log(`표제어 ${entries.length}개 (건너뜀 ${skipped}행)`);
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
+
+let inserted = 0;
+
+for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+  const batch = entries.slice(i, i + BATCH_SIZE).map(([headword, meanings]) => ({
+    headword,
+    meanings,
+  }));
+
+  const { error } = await supabase.from('vocabulary').upsert(batch, { onConflict: 'headword' });
+
+  if (error) {
+    console.error(`\n적재 실패 (${i + 1}~${i + batch.length}행):`, error.message);
+    process.exit(1);
+  }
+
+  inserted += batch.length;
+  process.stdout.write(`\r적재 중... ${inserted}/${entries.length}`);
+}
+
+console.log(`\n완료 — vocabulary 테이블에 ${inserted}개 표제어 upsert`);
