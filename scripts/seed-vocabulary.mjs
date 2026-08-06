@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * 단어장 엑셀(.xlsx) → Supabase `vocabulary` 테이블 적재기.
+ * 단어장 엑셀(.xlsx) → Supabase `SL_VOCA_DB` 테이블 적재기.
  *
  * 채점 시 "정답지의 영단어가 단어장에 있으면 단어장에 실린 뜻도 정답으로 인정"하기 위한
  * 보조 사전 데이터를 넣는다. 앱은 채점에 필요한 표제어만 골라 조회한다
  * (lib/vocab-dictionary.ts).
  *
  * 사전 준비:
- *   1. supabase/migrations/20260805000000_create_vocabulary.sql 적용
+ *   1. supabase/migrations/ 의 vocabulary 생성·이름변경 마이그레이션 적용
  *   2. .env.local 에 NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 설정
  *      (쓰기는 RLS 로 막혀 있어 service_role 키가 필요하다)
  *
@@ -203,7 +203,7 @@ for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     meanings,
   }));
 
-  const { error } = await supabase.from('vocabulary').upsert(batch, { onConflict: 'headword' });
+  const { error } = await supabase.from('SL_VOCA_DB').upsert(batch, { onConflict: 'headword' });
 
   if (error) {
     console.error(`\n적재 실패 (${i + 1}~${i + batch.length}행):`, error.message);
@@ -214,4 +214,4 @@ for (let i = 0; i < entries.length; i += BATCH_SIZE) {
   process.stdout.write(`\r적재 중... ${inserted}/${entries.length}`);
 }
 
-console.log(`\n완료 — vocabulary 테이블에 ${inserted}개 표제어 upsert`);
+console.log(`\n완료 — SL_VOCA_DB 테이블에 ${inserted}개 표제어 upsert`);

@@ -5,7 +5,7 @@
  * 답하면 오답 처리되곤 했다. 단어장에 같은 영단어가 있으면 거기 실린 뜻도 정답 후보로
  * 인정해 이 격차를 메운다.
  *
- * 데이터는 Supabase `vocabulary` 테이블에 있다 (scripts/seed-vocabulary.mjs 로 적재).
+ * 데이터는 Supabase `SL_VOCA_DB` 테이블에 있다 (scripts/seed-vocabulary.mjs 로 적재).
  * 표제어 전체는 12,000건이 넘고 config.toml 의 max_rows 가 1000이라 통째로 받지 않는다.
  * 대신 채점 시작 시점에 필요한 표제어만 골라 조회하고(preloadVocabulary),
  * 이후 판정은 메모리 캐시에서 동기적으로 처리한다.
@@ -14,7 +14,7 @@
 import { supabase } from './supabase';
 import { parseCorrectAnswers } from './answer-candidates';
 
-const TABLE = 'vocabulary';
+const TABLE = 'SL_VOCA_DB';
 
 /** URL 길이 제한을 고려한 IN 절 한 번당 표제어 수 */
 const LOOKUP_CHUNK_SIZE = 200;

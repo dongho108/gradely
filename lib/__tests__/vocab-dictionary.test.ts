@@ -76,7 +76,7 @@ describe('preloadVocabulary', () => {
 
     await preloadVocabulary(['float', 'conduct'])
 
-    expect(mockFrom).toHaveBeenCalledWith('vocabulary')
+    expect(mockFrom).toHaveBeenCalledWith('SL_VOCA_DB')
     expect(mockIn).toHaveBeenCalledWith('headword', ['float', 'conduct'])
     expect(lookupMeanings('float')).toEqual(['뜨다', '떠다니다', '부유물'])
     expect(lookupMeanings('conduct')).toEqual(['수행하다', '지휘하다'])
