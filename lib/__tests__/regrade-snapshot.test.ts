@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AnswerKeyStructure, StudentExamStructure } from '@/types/grading'
 import { SNAPSHOT_RESULTS, EXPECTED_REGRADE, type RegradeCategory } from './fixtures/regrade-snapshot'
+import { parseCorrectAnswers } from '../answer-candidates'
 
 const mockInvoke = vi.fn()
 vi.mock('../supabase', () => ({
@@ -215,7 +216,11 @@ describe('스냅샷 vs lenient 재채점 비교', () => {
     for (const q of payload.body.questions) {
       const snap = SNAPSHOT_RESULTS.find(r => String(r.questionNumber) === q.id)!
       expect(q.studentAnswer).toBe(snap.studentAnswer)
-      expect(q.correctAnswer).toBe(snap.correctAnswer)
+      // 정답지에서 분해된 후보가 모두 '|||'로 합쳐져 전달된다 (여기에 단어장 뜻이 더해질 수 있다)
+      const sent = q.correctAnswer.split('|||')
+      for (const candidate of parseCorrectAnswers(snap.correctAnswer)) {
+        expect(sent).toContain(candidate)
+      }
       expect(q.question).toBe(snap.question)
     }
   })

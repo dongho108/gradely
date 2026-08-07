@@ -13,6 +13,7 @@ vi.mock('../supabase', () => ({
 
 // Import after mock setup
 import { calculateGradingResult, recalculateAfterEdit, isAnswerCorrect } from '../grading-service'
+import { __setVocabularyForTest } from '../vocab-dictionary'
 
 function makeAnswerKey(answers: Record<string, { text: string; question?: string }>): AnswerKeyStructure {
   return {
@@ -50,11 +51,152 @@ describe('isAnswerCorrect (local fallback)', () => {
   it('빈 문자열은 false', () => {
     expect(isAnswerCorrect('', '')).toBe(false)
   })
+
+  describe('다의어 정답지 (세미콜론·품사 태그·괄호)', () => {
+    it('세미콜론 뒤의 뜻도 정답으로 인정한다', () => {
+      expect(isAnswerCorrect('떠다니다', '뜨다, 떠다니다; 부유물')).toBe(true)
+      expect(isAnswerCorrect('부유물', '뜨다, 떠다니다; 부유물')).toBe(true)
+    })
+
+    it('세미콜론만 있는 정답지의 첫 번째 뜻도 인정한다', () => {
+      expect(isAnswerCorrect('범위', '범위; 정렬시키다')).toBe(true)
+      expect(isAnswerCorrect('정렬시키다', '범위; 정렬시키다')).toBe(true)
+    })
+
+    it('품사 태그가 붙어 있어도 뜻만으로 인정한다', () => {
+      expect(isAnswerCorrect('페인트칠하다', '[명] 페인트 [동] 페인트칠하다')).toBe(true)
+    })
+
+    it('괄호 보충설명을 뺀 핵심 단어도 인정한다', () => {
+      expect(isAnswerCorrect('그리다', '(그림 물감으로) 그리다')).toBe(true)
+    })
+
+    it('정답지에 없는 뜻은 여전히 오답', () => {
+      expect(isAnswerCorrect('먹다', '뜨다, 떠다니다; 부유물')).toBe(false)
+    })
+  })
+
+  describe('단어장 보조 사전', () => {
+    beforeEach(() => {
+      __setVocabularyForTest({
+        float: '뜨다, 떠다니다; 부유물; 자유롭게 변동하다',
+        conduct: '수행하다, 실시하다; 행위, 안내; 지휘하다',
+      })
+    })
+
+    it('정답지에 없어도 단어장에 실린 뜻이면 정답', () => {
+      // 정답지에는 "뜨다"만 있지만 단어장에 "자유롭게 변동하다"가 있다
+      expect(isAnswerCorrect('자유롭게 변동하다', '뜨다', 'float')).toBe(true)
+    })
+
+    it('단어장의 다른 뜻도 인정한다', () => {
+      expect(isAnswerCorrect('지휘하다', '수행하다', 'conduct')).toBe(true)
+    })
+
+    it('question이 없으면 단어장을 참조하지 않는다', () => {
+      expect(isAnswerCorrect('자유롭게 변동하다', '뜨다')).toBe(false)
+    })
+
+    it('단어장에도 없는 뜻은 오답', () => {
+      expect(isAnswerCorrect('먹다', '뜨다', 'float')).toBe(false)
+    })
+
+    it('단어장에 없는 표제어면 정답지 기준으로만 채점한다', () => {
+      expect(isAnswerCorrect('뜨다', '뜨다', 'unknownword')).toBe(true)
+      expect(isAnswerCorrect('부유물', '뜨다', 'unknownword')).toBe(false)
+    })
+  })
+
+  describe('한→영 문항 (지문이 한국어, 정답이 영어)', () => {
+    beforeEach(() => {
+      __setVocabularyForTest({
+        title: '제목, 표제; 직함',
+        heading: '제목, 표제',
+        apple: '사과',
+        conduct: '수행하다, 실시하다',
+      })
+    })
+
+    it('정답과 다른 영단어라도 단어장 뜻이 지문과 맞으면 정답', () => {
+      expect(isAnswerCorrect('heading', 'title', '[명] 제목')).toBe(true)
+    })
+
+    it('지문의 뜻과 무관한 영단어는 오답', () => {
+      expect(isAnswerCorrect('apple', 'title', '[명] 제목')).toBe(false)
+    })
+
+    it('단어장에 없는 영단어는 오답', () => {
+      expect(isAnswerCorrect('zzzz', 'title', '[명] 제목')).toBe(false)
+    })
+
+    it('정답지와 정확히 일치하면 당연히 정답', () => {
+      expect(isAnswerCorrect('title', 'title', '[명] 제목')).toBe(true)
+    })
+
+    it('영→한 문항에서는 역방향 조회가 동작하지 않는다', () => {
+      // 지문이 영어이므로 한→영 경로를 타면 안 된다
+      expect(isAnswerCorrect('수행하다', '실시하다', 'conduct')).toBe(true)
+      expect(isAnswerCorrect('사과', '실시하다', 'conduct')).toBe(false)
+    })
+  })
 })
 
 describe('calculateGradingResult', () => {
   beforeEach(() => {
     mockInvoke.mockReset()
+    // 실제 단어장이 로드되지 않도록 고정 (테스트 결정성)
+    __setVocabularyForTest({})
+  })
+
+  it('AI 페이로드의 correctAnswer에 단어장 뜻을 덧붙인다', async () => {
+    __setVocabularyForTest({ float: '뜨다, 떠다니다; 부유물' })
+
+    const answerKey = makeAnswerKey({ '1': { text: '뜨다', question: 'float' } })
+    const studentExam = makeStudentExam({ '1': '흐르다' })
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: false, reason: '다른 개념' }] },
+      error: null,
+    })
+
+    await calculateGradingResult('sub-vocab', answerKey, studentExam)
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
+      body: {
+        questions: [
+          {
+            id: '1',
+            studentAnswer: '흐르다',
+            correctAnswer: '뜨다|||떠다니다|||부유물',
+            question: 'float',
+          },
+        ],
+        systemPrompt: expect.any(String),
+      },
+    })
+  })
+
+  it('단어장에 없는 단어면 정답지 원문 그대로 AI에 넘긴다', async () => {
+    __setVocabularyForTest({ float: '뜨다' })
+
+    const answerKey = makeAnswerKey({ '1': { text: '제목', question: 'unknownword' } })
+    const studentExam = makeStudentExam({ '1': '표제' })
+
+    mockInvoke.mockResolvedValue({
+      data: { success: true, data: [{ id: '1', isCorrect: true, reason: '동의어' }] },
+      error: null,
+    })
+
+    await calculateGradingResult('sub-vocab-2', answerKey, studentExam)
+
+    expect(mockInvoke).toHaveBeenCalledWith('verify-semantic-grading-v2', {
+      body: {
+        questions: [
+          { id: '1', studentAnswer: '표제', correctAnswer: '제목', question: 'unknownword' },
+        ],
+        systemPrompt: expect.any(String),
+      },
+    })
   })
 
   it('미작성/판독불가는 AI 호출 없이 즉시 오답 처리', async () => {
