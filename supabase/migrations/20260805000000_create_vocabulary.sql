@@ -9,7 +9,7 @@
 -- ------------------------------------------------------------
 -- 1. vocabulary table
 -- ------------------------------------------------------------
-CREATE TABLE public.vocabulary (
+CREATE TABLE public.sl_vocabulary_dictionary (
   headword   TEXT PRIMARY KEY,           -- 영어 표제어 (소문자·공백 정규화된 형태)
   meanings   TEXT NOT NULL,              -- 한글 뜻 원문 (";" "," "/" 로 구분된 여러 뜻)
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
