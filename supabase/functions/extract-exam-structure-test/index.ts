@@ -147,9 +147,15 @@ serve(async (req) => {
     const model = body.model ?? Deno.env.get('OCR_MODEL') ?? 'gemini-3.5-flash-lite';
     const promptMode = body.promptMode ?? Deno.env.get('OCR_PROMPT_MODE') ?? 'v2';
     const thinking = Number(body.thinkingBudget ?? Deno.env.get('OCR_THINKING') ?? 1024);
-    const prompt = promptMode === 'v1' ? PROMPT_V1 : PROMPT_V2;
+    // 프롬프트를 요청 바디로 직접 받는다. 파일 내용을 그대로 보낼 수 있어
+    // 실험 함수 안에 옮겨 적으면서 생기는 전사 오차가 원천적으로 없어진다.
+    // body.prompt 가 없을 때만 내장 사본(PROMPT_V1/V2)을 쓴다.
+    const prompt = typeof body.prompt === 'string' && body.prompt.length > 0
+      ? body.prompt
+      : promptMode === 'v1' ? PROMPT_V1 : PROMPT_V2;
 
-    console.log(`[test] model=${model} prompt=${promptMode} thinking=${thinking} images=${body.images.length}`);
+    const promptSource = typeof body.prompt === 'string' && body.prompt.length > 0 ? `body(${body.prompt.length}자)` : promptMode;
+    console.log(`[test] model=${model} prompt=${promptSource} thinking=${thinking} images=${body.images.length}`);
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -195,7 +201,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: parseResult(textResponse),
-        meta: { model, promptMode, thinking, usage: geminiResponse.usageMetadata },
+        meta: { model, promptMode, promptLength: prompt.length, thinking, usage: geminiResponse.usageMetadata },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
