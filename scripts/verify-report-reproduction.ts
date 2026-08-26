@@ -75,9 +75,16 @@ const mode: Mode = isDryRun
 const RUNS = parseInt(process.env.RUNS || '1', 10);
 const FIXTURE_FILTER = process.env.FIXTURE;
 
+// OCR 실험용: 호출할 Edge Function 과 조합을 바꿔 끼운다.
+//   EXTRACT_FN=extract-exam-structure-test OCR_MODEL=gemini-3.5-flash-lite OCR_PROMPT_MODE=v2
+const EXTRACT_FN = process.env.EXTRACT_FN || "extract-exam-structure";
+const OCR_MODEL = process.env.OCR_MODEL;
+const OCR_PROMPT_MODE = process.env.OCR_PROMPT_MODE;
+const OCR_THINKING = process.env.OCR_THINKING;
+
 // ============ Edge Function 직접 호출 (verify-regrade-snapshot.ts:113-130 패턴) ============
 async function callExtractExam(images: string[]): Promise<StudentExamStructure> {
-  const url = `${SUPABASE_URL}/functions/v1/extract-exam-structure`;
+  const url = `${SUPABASE_URL}/functions/v1/${EXTRACT_FN}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -85,11 +92,17 @@ async function callExtractExam(images: string[]): Promise<StudentExamStructure> 
       apikey: SUPABASE_ANON_KEY!,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ images }),
+    body: JSON.stringify({
+      images,
+      // 실험용 함수에서만 사용된다 (운영 함수는 무시)
+      ...(OCR_MODEL ? { model: OCR_MODEL } : {}),
+      ...(OCR_PROMPT_MODE ? { promptMode: OCR_PROMPT_MODE } : {}),
+      ...(OCR_THINKING ? { thinkingBudget: Number(OCR_THINKING) } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`extract-exam-structure HTTP ${res.status}: ${text}`);
+    throw new Error(`${EXTRACT_FN} HTTP ${res.status}: ${text}`);
   }
   const json = (await res.json()) as { success: boolean; data?: StudentExamStructure; error?: string };
   if (!json.success || !json.data) throw new Error(`extract-exam-structure API error: ${json.error}`);
